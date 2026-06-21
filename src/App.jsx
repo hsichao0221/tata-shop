@@ -3,6 +3,8 @@ import { CartProvider, useCart } from "./CartContext.jsx";
 import HomePage from "./pages/HomePage.jsx";
 import ProductPage from "./pages/ProductPage.jsx";
 import CartPage from "./pages/CartPage.jsx";
+import CheckoutPage from "./pages/CheckoutPage.jsx";
+import OrderResultPage from "./pages/OrderResultPage.jsx";
 
 function NavBar() {
   const { totalQty } = useCart();
@@ -56,6 +58,8 @@ export default function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/products/:sku" element={<ProductPage />} />
           <Route path="/cart" element={<CartPage />} />
+          <Route path="/checkout" element={<CheckoutPage />} />
+          <Route path="/order-result" element={<OrderResultPage />} />
         </Routes>
       </BrowserRouter>
     </CartProvider>
