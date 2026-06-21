@@ -1,8 +1,9 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useCart } from "../CartContext.jsx";
 
 export default function CartPage() {
   const { items, updateQty, removeItem, totalPrice } = useCart();
+  const navigate = useNavigate();
 
   if (items.length === 0) {
     return (
@@ -127,6 +128,7 @@ export default function CartPage() {
       </div>
 
       <button
+        onClick={() => navigate("/checkout")}
         style={{
           width: "100%",
           padding: "14px 0",
