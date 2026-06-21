@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { fetchAllProducts } from "../supabase.js";
+import { useCart } from "../CartContext.jsx";
 
 export default function ProductPage() {
   const { sku } = useParams();
+  const { addItem } = useCart();
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedVariant, setSelectedVariant] = useState(null);
+  const [justAdded, setJustAdded] = useState(false);
 
   useEffect(() => {
     fetchAllProducts().then((all) => {
@@ -15,6 +18,13 @@ export default function ProductPage() {
       setLoading(false);
     });
   }, [sku]);
+
+  function handleAddToCart() {
+    if (!product) return;
+    addItem(product, selectedVariant);
+    setJustAdded(true);
+    setTimeout(() => setJustAdded(false), 1800);
+  }
 
   if (loading) {
     return <div style={{ textAlign: "center", padding: 60, color: "#999" }}>載入中...</div>;
@@ -127,12 +137,16 @@ export default function ProductPage() {
           )}
 
           <button
-            disabled={variants.length > 0 && !selectedVariant}
+            disabled={(variants.length > 0 && !selectedVariant) || justAdded}
+            onClick={handleAddToCart}
             style={{
               width: "100%",
               padding: "14px 0",
-              background:
-                variants.length > 0 && !selectedVariant ? "#ddd" : "#222",
+              background: justAdded
+                ? "#27ae60"
+                : variants.length > 0 && !selectedVariant
+                ? "#ddd"
+                : "#222",
               color: "#fff",
               border: "none",
               borderRadius: 6,
@@ -140,9 +154,10 @@ export default function ProductPage() {
               fontWeight: 700,
               cursor:
                 variants.length > 0 && !selectedVariant ? "not-allowed" : "pointer",
+              transition: "background 0.2s",
             }}
           >
-            加入購物車
+            {justAdded ? "✓ 已加入購物車" : "加入購物車"}
           </button>
 
           {availableVariants.length === 0 && variants.length > 0 && (
