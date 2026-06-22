@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchAllProducts, filterActiveProducts } from "../supabase.js";
+import { fetchFeaturedProducts } from "../supabase.js";
+import ProductCard from "../components/ProductCard.jsx";
 
 export default function HomePage() {
   const [products, setProducts] = useState([]);
@@ -8,10 +9,10 @@ export default function HomePage() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    fetchAllProducts()
-      .then((all) => {
-        const active = filterActiveProducts(all);
-        setProducts(active);
+    // 首頁只抓「精選新品」這一小批，不抓全部商品，避免首頁載入過慢
+    fetchFeaturedProducts(12)
+      .then((items) => {
+        setProducts(items);
         setLoading(false);
       })
       .catch((e) => {
@@ -22,122 +23,88 @@ export default function HomePage() {
   }, []);
 
   return (
-    <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 16px" }}>
-      <header style={{ padding: "24px 0", textAlign: "center" }}>
-        <h1 style={{ fontSize: 28, fontWeight: 700, letterSpacing: 2, margin: 0 }}>
+    <div>
+      {/* 品牌主視覺區塊 */}
+      <div
+        style={{
+          textAlign: "center",
+          padding: "48px 16px",
+          background: "#fafafa",
+          marginBottom: 32,
+        }}
+      >
+        <h1 style={{ fontSize: 32, fontWeight: 700, letterSpacing: 3, margin: 0 }}>
           TATA
         </h1>
-        <p style={{ color: "#888", fontSize: 13, marginTop: 4 }}>
-          台灣女裝童裝品牌
+        <p style={{ color: "#888", fontSize: 14, marginTop: 8 }}>
+          台灣女裝童裝品牌・全館2件9折 滿2500折100
         </p>
-      </header>
+      </div>
 
-      {loading && (
-        <div style={{ textAlign: "center", padding: 60, color: "#999" }}>
-          載入中...
-        </div>
-      )}
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 16px 60px" }}>
+        <h2
+          style={{
+            fontSize: 18,
+            fontWeight: 700,
+            textAlign: "center",
+            marginBottom: 24,
+            letterSpacing: 1,
+          }}
+        >
+          New Arrivals
+        </h2>
 
-      {error && (
-        <div style={{ textAlign: "center", padding: 60, color: "#c0392b" }}>
-          {error}
-        </div>
-      )}
-
-      {!loading && !error && (
-        <>
-          <div style={{ color: "#999", fontSize: 13, marginBottom: 16 }}>
-            共 {products.length} 件商品上架中
+        {loading && (
+          <div style={{ textAlign: "center", padding: 60, color: "#999" }}>
+            載入中...
           </div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
-              gap: 16,
-              paddingBottom: 40,
-            }}
-          >
-            {products.map((p) => (
-              <Link
-                key={p.id || p.sku}
-                to={`/products/${p.sku}`}
-                style={{ textDecoration: "none", color: "inherit" }}
-              >
-                <div
-                  style={{
-                    border: "1px solid #eee",
-                    borderRadius: 8,
-                    overflow: "hidden",
-                    transition: "box-shadow 0.2s",
-                  }}
-                >
-                  <div
-                    style={{
-                      aspectRatio: "3/4",
-                      background: "#f5f5f5",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "#ccc",
-                      fontSize: 12,
-                      overflow: "hidden",
-                    }}
-                  >
-                    {p.images?.[0] ? (
-                      <img
-                        src={p.images[0]}
-                        alt={p.name}
-                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                      />
-                    ) : (
-                      "無圖片"
-                    )}
-                  </div>
-                  <div style={{ padding: "8px 10px" }}>
-                    <div
-                      style={{
-                        fontSize: 13,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {p.name}
-                    </div>
-                    <div style={{ marginTop: 4, display: "flex", alignItems: "baseline", gap: 6 }}>
-                      {p.salePrice ? (
-                        <>
-                          <span style={{ fontSize: 14, fontWeight: 700, color: "#c0392b" }}>
-                            NT${p.salePrice}
-                          </span>
-                          <span
-                            style={{
-                              fontSize: 12,
-                              color: "#999",
-                              textDecoration: "line-through",
-                            }}
-                          >
-                            NT${p.price}
-                          </span>
-                        </>
-                      ) : (
-                        <span style={{ fontSize: 14, fontWeight: 700 }}>
-                          NT${p.price}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </Link>
-            ))}
+        )}
+
+        {error && (
+          <div style={{ textAlign: "center", padding: 60, color: "#c0392b" }}>
+            {error}
           </div>
-          {products.length === 0 && (
-            <div style={{ textAlign: "center", padding: 60, color: "#999" }}>
-              目前尚無上架商品
+        )}
+
+        {!loading && !error && (
+          <>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
+                gap: 16,
+              }}
+            >
+              {products.map((p) => (
+                <ProductCard key={p.id || p.sku} product={p} />
+              ))}
             </div>
-          )}
-        </>
-      )}
+
+            {products.length === 0 && (
+              <div style={{ textAlign: "center", padding: 60, color: "#999" }}>
+                目前尚無上架商品
+              </div>
+            )}
+
+            <div style={{ textAlign: "center", marginTop: 32 }}>
+              <Link
+                to="/products"
+                style={{
+                  display: "inline-block",
+                  padding: "12px 32px",
+                  border: "1px solid #222",
+                  color: "#222",
+                  textDecoration: "none",
+                  fontSize: 13,
+                  letterSpacing: 1,
+                }}
+              >
+                查看更多
+              </Link>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
