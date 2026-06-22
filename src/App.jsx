@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
 import { CartProvider, useCart } from "./CartContext.jsx";
+import CategoryNav from "./components/CategoryNav.jsx";
 import HomePage from "./pages/HomePage.jsx";
 import ProductListPage from "./pages/ProductListPage.jsx";
 import ProductPage from "./pages/ProductPage.jsx";
@@ -60,6 +61,7 @@ export default function App() {
     <CartProvider>
       <BrowserRouter>
         <NavBar />
+        <CategoryNav />
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/products" element={<ProductListPage />} />
