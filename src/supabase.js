@@ -57,3 +57,83 @@ export async function fetchFeaturedProducts(limit = 12) {
   const active = filterActiveProducts(list);
   return active.slice(0, limit);
 }
+
+// ════════════════════════════════════════════════════════════════
+// 分類管理（shop_categories）
+// 對應 ERP 商品的 category 欄位，或人工挑選的企劃集合（如「俐落OL上班族」）。
+// 存放在 erp_settings 的獨立 key，跟商品資料、首頁區塊設定完全分開存放，
+// 修改分類不會影響商品資料，也不會影響首頁其他區塊的設定。
+// ════════════════════════════════════════════════════════════════
+
+// 預設分類清單：對應 ERP 商品本身就有的 category 欄位，
+// 這是「讀不到自訂分類時」的安全 fallback，確保網站一定有基本的分類可用。
+const DEFAULT_CATEGORIES = [
+  { id: "all", label: "所有商品", filterMode: "all", order: 0, showInMenu: true },
+  { id: "tops", label: "上衣", filterMode: "category", filterValue: "上衣", order: 10, showInMenu: true },
+  { id: "skirts", label: "裙子", filterMode: "category", filterValue: "裙子", order: 11, showInMenu: true },
+  { id: "trousers", label: "褲子", filterMode: "category", filterValue: "褲子", order: 12, showInMenu: true },
+  { id: "tshirts", label: "T恤", filterMode: "category", filterValue: "T恤", order: 13, showInMenu: true },
+  { id: "outwears", label: "外套", filterMode: "category", filterValue: "外套", order: 14, showInMenu: true },
+  { id: "coats", label: "大衣", filterMode: "category", filterValue: "大衣", order: 15, showInMenu: true },
+  { id: "dresses", label: "洋裝/套裝", filterMode: "category", filterValue: "洋裝/套裝", order: 16, showInMenu: true },
+  { id: "knitwears", label: "針織上衣", filterMode: "category", filterValue: "針織上衣", order: 17, showInMenu: true },
+  { id: "accessories", label: "配件", filterMode: "category", filterValue: "配件", order: 18, showInMenu: true },
+  { id: "kids", label: "童裝", filterMode: "group", filterValue: "童裝", order: 20, showInMenu: true },
+];
+
+// 讀取分類清單：讀不到自訂分類時，回傳上面這份預設清單，確保網站一定能正常顯示分類選單
+export async function fetchCategories() {
+  const saved = await loadSetting("shop_categories");
+  if (Array.isArray(saved) && saved.length > 0) return saved;
+  return DEFAULT_CATEGORIES;
+}
+
+// 寫入分類清單（之後 ShopAdmin 在 ERP 裡編輯分類時會呼叫這個）
+export async function saveCategories(categories, token) {
+  try {
+    await fetch(SUPABASE_URL + "/rest/v1/erp_settings", {
+      method: "POST",
+      headers: {
+        ...HEADERS,
+        "Authorization": "Bearer " + (token || SUPABASE_ANON_KEY),
+        "Prefer": "resolution=merge-duplicates",
+      },
+      body: JSON.stringify({
+        key: "shop_categories",
+        value: categories,
+        updated_at: new Date().toISOString(),
+      }),
+    });
+    return true;
+  } catch (e) {
+    console.warn("saveCategories failed:", e);
+    return false;
+  }
+}
+
+// 依照分類定義，從完整商品清單裡篩出符合的商品。
+// 這個函式是「分類系統」跟「商品資料」真正串接起來的地方：
+// 給定一個分類定義（filterMode + filterValue），回傳所有符合條件的上架商品。
+export function filterProductsByCategory(products, category) {
+  const active = filterActiveProducts(products);
+  if (!category || category.filterMode === "all") return active;
+
+  if (category.filterMode === "category") {
+    return active.filter((p) => p.category === category.filterValue);
+  }
+  if (category.filterMode === "group") {
+    return active.filter((p) => p.group === category.filterValue);
+  }
+  if (category.filterMode === "tag") {
+    return active.filter((p) => p.tag === category.filterValue);
+  }
+  if (category.filterMode === "on_sale") {
+    return active.filter((p) => p.salePrice);
+  }
+  if (category.filterMode === "sku_list") {
+    const skuSet = new Set(category.skuList || []);
+    return active.filter((p) => skuSet.has(p.sku));
+  }
+  // 未知的 filterMode，安全 fallback 回傳全部上架商品，不讓畫面整片空白
+  return active;
+}
