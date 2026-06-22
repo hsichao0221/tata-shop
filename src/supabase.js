@@ -47,3 +47,13 @@ export async function fetchAllProducts() {
 export function filterActiveProducts(products) {
   return products.filter((p) => p.active === true || p.active === undefined);
 }
+
+// 首頁「精選新品」用的輕量版讀取：只抓第一個批次（最多300筆），
+// 不像 fetchAllProducts 要把全部批次抓完，大幅減少首頁的網路請求次數跟等待時間。
+// 商品列表頁（看全部商品）才需要用 fetchAllProducts 抓完整資料。
+export async function fetchFeaturedProducts(limit = 12) {
+  const firstBatch = await loadSetting("products_0");
+  const list = Array.isArray(firstBatch) ? firstBatch : [];
+  const active = filterActiveProducts(list);
+  return active.slice(0, limit);
+}
