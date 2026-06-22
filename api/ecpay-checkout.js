@@ -97,7 +97,8 @@ export default async function handler(req, res) {
       ReturnURL: `${baseUrl}/api/ecpay-notify`, // ECPay 背景通知付款結果
       ChoosePayment: "Credit", // 先只開信用卡，之後可視需要開放其他付款方式
       EncryptType: 1, // 1 = SHA256
-      OrderResultURL: `${baseUrl}/order-result`, // 顧客付款完成後，瀏覽器導回的頁面
+      OrderResultURL: `${baseUrl}/api/order-result`, // 顧客付款完成後，ECPay會用POST方式回傳到這個後端API，
+      // 不能直接指向前端頁面（會收到405錯誤），這個API會再轉導向真正的成功頁面
     };
 
     const checkMacValue = generateCheckMacValue(params, HASH_KEY, HASH_IV);
