@@ -34,14 +34,29 @@ export default function LoginPage() {
     setConfirmPassword("");
   }
 
+  // 密碼強度檢查：至少6個字元、必須包含至少一個英文字母、不能是純數字（避免123456這種容易被猜到的密碼）
+  function getPasswordError(pwd) {
+    if (pwd.length < 6) return "密碼至少需要6個字元";
+    if (!/[a-zA-Z]/.test(pwd)) return "密碼必須包含至少一個英文字母";
+    if (/^\d+$/.test(pwd)) return "密碼不能是純數字，請混合英文字母";
+    return null;
+  }
+
   async function handleEmailSubmit(e) {
     e.preventDefault();
     setError(null);
     setSignupNotice(null);
 
-    if (mode === "signup" && password !== confirmPassword) {
-      setError("兩次輸入的密碼不一致，請重新確認");
-      return;
+    if (mode === "signup") {
+      const pwdError = getPasswordError(password);
+      if (pwdError) {
+        setError(pwdError);
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError("兩次輸入的密碼不一致，請重新確認");
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -170,13 +185,18 @@ export default function LoginPage() {
           />
           <input
             type="password"
-            placeholder="密碼（至少6個字元）"
+            placeholder={mode === "signup" ? "密碼（需含英文字母，不可純數字）" : "密碼"}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
             minLength={6}
             style={{ padding: "10px 12px", border: "1px solid #ddd", borderRadius: 6, fontSize: 14 }}
           />
+          {mode === "signup" && (
+            <div style={{ color: "#999", fontSize: 11, marginTop: -6 }}>
+              至少6個字元，需包含英文字母，不能是純數字
+            </div>
+          )}
           {mode === "signup" && (
             <input
               type="password"
