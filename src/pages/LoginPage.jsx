@@ -28,19 +28,30 @@ export default function LoginPage() {
     setError(null);
     setSubmitting(true);
 
-    const fn = mode === "login" ? signInWithEmail : signUpWithEmail;
-    const { error } = await fn(email, password);
-
-    if (error) {
-      setError(error.message === "Invalid login credentials" ? "帳號或密碼錯誤" : error.message);
-      setSubmitting(false);
-    } else if (mode === "signup") {
-      setError(null);
-      alert("註冊成功！請使用此帳密登入");
-      setMode("login");
-      setSubmitting(false);
+    if (mode === "login") {
+      const { error } = await signInWithEmail(email, password);
+      if (error) {
+        setError(error.message === "Invalid login credentials" ? "帳號或密碼錯誤" : error.message);
+        setSubmitting(false);
+      }
+      // 登入成功的話，user state 會自動更新，上面的 useEffect 會處理導頁
+    } else {
+      const { data, error } = await signUpWithEmail(email, password);
+      if (error) {
+        setError(error.message);
+        setSubmitting(false);
+        return;
+      }
+      // 依照真實的 session 狀態判斷：有 session 代表 Supabase 後台關閉了 Email 驗證信，
+      // 已經自動完成登入；沒有 session 代表開啟了驗證信，要請顧客先去信箱確認。
+      if (data?.session) {
+        // user state 會自動更新，上面的 useEffect 會處理導頁，這裡不需要額外動作
+      } else {
+        alert("註冊成功！請查看您的 Email 信箱，點擊確認連結後即可登入");
+        setMode("login");
+        setSubmitting(false);
+      }
     }
-    // 登入成功的話，user state 會自動更新，上面的 useEffect 會處理導頁
   }
 
   async function handleProviderLogin(provider) {
