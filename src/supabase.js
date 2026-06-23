@@ -139,27 +139,28 @@ export function filterProductsByCategory(products, category) {
 }
 
 // ════════════════════════════════════════════════════════════════
-// 配送方式（shop_shipping_methods）
-// 結帳頁顯示的配送選項，由ERP後台「送貨設定」分頁管理，
-// 跟分類管理不同，這個是獨立的資料表（非erp_settings key-value），方便個別欄位編輯。
+// 官網設定（shop_settings）
+// 公版化原則：「要開放哪些會員登入方式」是商家自己的選擇，不寫死在程式碼裡，
+// 存放在這裡，未來在 ERP 的 ShopAdmin.jsx 介面可以用開關調整，
+// 不需要改動任何前端程式碼，調整完官網會自動套用新設定。
 // ════════════════════════════════════════════════════════════════
 
-// 讀不到資料時的安全fallback，確保結帳頁至少有「宅配到府」可以選，不會整頁空白
-const DEFAULT_SHIPPING_METHODS = [
-  { id: "home_delivery", name: "宅配到府", method_type: "home_delivery", ecpay_subtype: null, fee_amount: 100, enabled: true, sort_order: 1 },
-];
+// 預設只開放 Email 登入，因為這是唯一「不需要額外向第三方平台申請金鑰」就能運作的方式，
+// 確保即使商家還沒去 Facebook/Google 申請好應用程式，會員系統依然能正常運作，不會整個壞掉。
+const DEFAULT_AUTH_SETTINGS = {
+  enabledAuthMethods: {
+    email: true,
+    facebook: false,
+    google: false,
+    line: false,
+  },
+};
 
-export async function fetchShippingMethods() {
-  try {
-    const r = await fetch(
-      `${SUPABASE_URL}/rest/v1/shop_shipping_methods?select=*&enabled=eq.true&order=sort_order.asc`,
-      { headers: HEADERS }
-    );
-    if (!r.ok) return DEFAULT_SHIPPING_METHODS;
-    const d = await r.json();
-    return Array.isArray(d) && d.length > 0 ? d : DEFAULT_SHIPPING_METHODS;
-  } catch (e) {
-    console.warn("fetchShippingMethods failed:", e);
-    return DEFAULT_SHIPPING_METHODS;
+export async function fetchAuthSettings() {
+  const saved = await loadSetting("shop_auth_settings");
+  if (saved && typeof saved === "object" && saved.enabledAuthMethods) {
+    // 合併預設值，確保即使商家只存了部分欄位，其他登入方式的開關狀態不會因此消失或變成 undefined
+    return { ...DEFAULT_AUTH_SETTINGS, ...saved, enabledAuthMethods: { ...DEFAULT_AUTH_SETTINGS.enabledAuthMethods, ...saved.enabledAuthMethods } };
   }
+  return DEFAULT_AUTH_SETTINGS;
 }
