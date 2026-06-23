@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../AuthContext.jsx";
-import { fetchAuthSettings } from "../supabase.js";
+import { fetchAuthSettings, checkEmailExists } from "../supabase.js";
 
 export default function LoginPage() {
   const { user, signUpWithEmail, signInWithEmail, signInWithProvider } = useAuth();
@@ -55,6 +55,13 @@ export default function LoginPage() {
       }
       if (password !== confirmPassword) {
         setError("兩次輸入的密碼不一致，請重新確認");
+        return;
+      }
+      // 因為 Supabase 在 Confirm Email 開啟時，對重複的Email不會給出明確錯誤（安全設計），
+      // 改用查詢 pos_members 的方式輔助判斷，提早告知顧客這個Email已經用過，不用等到送出才發現
+      const exists = await checkEmailExists(email);
+      if (exists) {
+        setError("此 Email 已經註冊過，請改用登入，或使用其他 Email 註冊");
         return;
       }
     }
@@ -228,6 +235,14 @@ export default function LoginPage() {
             {submitting ? "處理中..." : mode === "login" ? "登入" : "註冊"}
           </button>
         </form>
+      )}
+
+      {mode === "login" && methods.email && (
+        <div style={{ textAlign: "center", marginTop: 10 }}>
+          <Link to="/forgot-password" style={{ color: "#999", fontSize: 12 }}>
+            忘記密碼？
+          </Link>
+        </div>
       )}
 
       <div style={{ textAlign: "center", marginTop: 20, fontSize: 13 }}>
