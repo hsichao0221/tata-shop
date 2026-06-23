@@ -17,7 +17,8 @@ const CARRIER_LABEL = {
 export default async function handler(req, res) {
   try {
     const data = req.body || {};
-    const draftId = data.ExtraData || "";
+    // ExtraData跟MerchantTradeNo帶的是同一個編號，哪個有值就用哪個，提高比對成功率
+    const draftId = data.ExtraData || data.MerchantTradeNo || "";
     const carrier = CARRIER_LABEL[data.LogisticsSubType] || data.LogisticsSubType || "";
 
     if (draftId) {

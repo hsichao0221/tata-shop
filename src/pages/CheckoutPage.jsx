@@ -113,7 +113,9 @@ export default function CheckoutPage() {
   // 把目前表單狀態存進localStorage，然後整頁導去綠界門市電子地圖選店，
   // 選完店後綠界會把結果POST回我們的/api/ecpay-cvsmap-callback，再導回這個頁面
   function handleChooseStore(method) {
-    const draftId = (window.crypto?.randomUUID && window.crypto.randomUUID()) || `${Date.now()}-${Math.random()}`;
+    // 綠界ExtraData欄位上限20字元，用短編號（時間戳記末6碼+4碼亂數，共10字元）避免超長被截斷或清空，
+    // MerchantTradeNo也帶同一個編號當備援，兩個欄位都會被綠界原值回傳，提高比對成功率
+    const draftId = Date.now().toString(36).slice(-6) + Math.random().toString(36).slice(2, 6);
     localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...customerInfo, shipMethodId: method.id }));
 
     const form = document.createElement("form");
@@ -122,6 +124,7 @@ export default function CheckoutPage() {
     form.action = "https://logistics-stage.ecpay.com.tw/Express/map";
     const fields = {
       MerchantID: "2000132",
+      MerchantTradeNo: draftId,
       LogisticsType: "CVS",
       LogisticsSubType: method.ecpay_subtype,
       IsCollection: "N",
