@@ -23,7 +23,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { items, totalAmount, orderId } = req.body;
+    const { items, totalAmount, orderId, customerName, customerPhone, customerEmail, shipMethod, shipAddress } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       res.status(400).json({ error: "購物車是空的" });
@@ -31,6 +31,14 @@ export default async function handler(req, res) {
     }
     if (!totalAmount || totalAmount <= 0) {
       res.status(400).json({ error: "金額不正確" });
+      return;
+    }
+    if (!customerName || !customerName.trim()) {
+      res.status(400).json({ error: "請填寫訂購人姓名" });
+      return;
+    }
+    if (!customerPhone || !customerPhone.trim()) {
+      res.status(400).json({ error: "請填寫聯絡電話" });
       return;
     }
 
@@ -70,7 +78,13 @@ export default async function handler(req, res) {
           cash_input: 0,
           change_amount: 0,
           member_id: null,
-          member_name: null,
+          member_name: customerName || null,
+          customer_phone: customerPhone || null,
+          customer_email: customerEmail || null,
+          ship_method: shipMethod || null,
+          ship_address: shipMethod === "宅配到府" ? (shipAddress || null) : null,
+          recipient_name: customerName || null,
+          recipient_phone: customerPhone || null,
           note: "ECPay待付款",
           type: "pending", // 待付款狀態，收到ecpay-notify確認付款成功後才會更新成 sale
         }),
