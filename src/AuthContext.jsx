@@ -82,8 +82,12 @@ export function AuthProvider({ children }) {
   }, []);
 
   async function signUpWithEmail(email, password) {
-    const { error } = await supabase.auth.signUp({ email, password });
-    return { error };
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    // 如果 Supabase 後台「Confirm email」是開啟的，data.session 會是 null，
+    // 代表顧客註冊後還需要去信箱點確認連結才能登入；
+    // 如果是關閉的，data.session 會直接有值，代表已經自動完成登入。
+    // 回傳完整的 data，讓呼叫端能依照真實狀態給出正確的提示，不是憑空假設。
+    return { data, error };
   }
 
   async function signInWithEmail(email, password) {
