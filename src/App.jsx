@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
 import { CartProvider, useCart } from "./CartContext.jsx";
+import { AuthProvider, useAuth } from "./AuthContext.jsx";
 import CategoryNav from "./components/CategoryNav.jsx";
 import HomePage from "./pages/HomePage.jsx";
 import ProductListPage from "./pages/ProductListPage.jsx";
@@ -7,9 +8,12 @@ import ProductPage from "./pages/ProductPage.jsx";
 import CartPage from "./pages/CartPage.jsx";
 import CheckoutPage from "./pages/CheckoutPage.jsx";
 import OrderResultPage from "./pages/OrderResultPage.jsx";
+import LoginPage from "./pages/LoginPage.jsx";
+import AccountPage from "./pages/AccountPage.jsx";
 
 function NavBar() {
   const { totalQty } = useCart();
+  const { user } = useAuth();
   return (
     <nav
       style={{
@@ -30,6 +34,9 @@ function NavBar() {
       <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
         <Link to="/products" style={{ textDecoration: "none", color: "#222", fontSize: 14 }}>
           所有商品
+        </Link>
+        <Link to={user ? "/account" : "/login"} style={{ textDecoration: "none", color: "#222", fontSize: 14 }}>
+          {user ? "我的帳戶" : "登入"}
         </Link>
         <Link to="/cart" style={{ textDecoration: "none", color: "#222", fontSize: 14, position: "relative" }}>
           🛒 購物車
@@ -58,19 +65,23 @@ function NavBar() {
 
 export default function App() {
   return (
-    <CartProvider>
-      <BrowserRouter>
-        <NavBar />
-        <CategoryNav />
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/products" element={<ProductListPage />} />
-          <Route path="/products/:sku" element={<ProductPage />} />
-          <Route path="/cart" element={<CartPage />} />
-          <Route path="/checkout" element={<CheckoutPage />} />
-          <Route path="/order-result" element={<OrderResultPage />} />
-        </Routes>
-      </BrowserRouter>
-    </CartProvider>
+    <AuthProvider>
+      <CartProvider>
+        <BrowserRouter>
+          <NavBar />
+          <CategoryNav />
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/products" element={<ProductListPage />} />
+            <Route path="/products/:sku" element={<ProductPage />} />
+            <Route path="/cart" element={<CartPage />} />
+            <Route path="/checkout" element={<CheckoutPage />} />
+            <Route path="/order-result" element={<OrderResultPage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/account" element={<AccountPage />} />
+          </Routes>
+        </BrowserRouter>
+      </CartProvider>
+    </AuthProvider>
   );
 }
