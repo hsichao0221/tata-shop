@@ -10,6 +10,8 @@ import CheckoutPage from "./pages/CheckoutPage.jsx";
 import OrderResultPage from "./pages/OrderResultPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import AccountPage from "./pages/AccountPage.jsx";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage.jsx";
+import UpdatePasswordPage from "./pages/UpdatePasswordPage.jsx";
 
 function NavBar() {
   const { totalQty } = useCart();
@@ -79,6 +81,8 @@ export default function App() {
             <Route path="/order-result" element={<OrderResultPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/account" element={<AccountPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/update-password" element={<UpdatePasswordPage />} />
           </Routes>
         </BrowserRouter>
       </CartProvider>
