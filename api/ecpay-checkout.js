@@ -13,16 +13,7 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 function formatDate(d) {
   const pad = (n) => String(n).padStart(2, "0");
-  // 用 getUTC* 讀取欄位，搭配下面建立 now 時已手動加上8小時的偏移量，
-  // 這樣不管 Vercel 伺服器本身設定的時區是什麼，算出來的都一定是台灣時間，不會再有誤差。
-  return `${d.getUTCFullYear()}/${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
-}
-
-// 取得台灣時間（UTC+8）的Date物件：Vercel伺服器跑在UTC時區，
-// 直接用 new Date() 會讓訂單時間比實際台灣時間晚8小時，
-// 所以要先把當下時間戳記手動加上8小時，後面再搭配 formatDate 的 getUTC* 讀取，才會顯示正確的台灣時間。
-function nowInTaipei() {
-  return new Date(Date.now() + 8 * 60 * 60 * 1000);
+  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 export default async function handler(req, res) {
@@ -32,7 +23,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { items, totalAmount, shippingFee, orderId, customerName, customerPhone, customerEmail, shipMethod, shipMethodType, shipAddress, cvsStoreId, cvsStoreName, cvsStoreAddress } = req.body;
+    const { items, totalAmount, orderId, memberEmail } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       res.status(400).json({ error: "購物車是空的" });
@@ -42,38 +33,8 @@ export default async function handler(req, res) {
       res.status(400).json({ error: "金額不正確" });
       return;
     }
-    if (!customerName || !customerName.trim()) {
-      res.status(400).json({ error: "請填寫訂購人姓名" });
-      return;
-    }
-    if (!customerPhone || !customerPhone.trim()) {
-      res.status(400).json({ error: "請填寫聯絡電話" });
-      return;
-    }
-    if (shipMethodType === "cvs" && !cvsStoreId) {
-      res.status(400).json({ error: "請選擇取貨門市" });
-      return;
-    }
-    if (shipMethodType === "home_delivery" && (!shipAddress || !shipAddress.trim())) {
-      res.status(400).json({ error: "請填寫收件地址" });
-      return;
-    }
 
-    // 依配送類型組成要存進pos_orders.ship_address的文字：
-    // 宅配存自由輸入地址；超商取貨存「門市名稱（代號）地址」方便ERP端直接看懂，不用再查門市代號對照表
-    const finalShipAddress =
-      shipMethodType === "cvs"
-        ? `${cvsStoreName || ""}（門市代號:${cvsStoreId || ""}）${cvsStoreAddress || ""}`.trim()
-        : (shipAddress || null);
-
-    // 真正要收的金額 = 商品小計 + 運費，後端重新算一次，不直接信任前端傳來的總額，
-    // 避免前端漏算運費或被竄改（運費本身則是前端依「目前後台設定」算好傳過來的，
-    // 因為這支API本身沒有另外查shop_shipping_methods，先用這個方式維持單一資料來源在前端）
-    const itemsSubtotal = Math.round(totalAmount);
-    const finalShippingFee = Math.round(Number(shippingFee) || 0);
-    const orderTotal = itemsSubtotal + finalShippingFee;
-
-    const now = nowInTaipei();
+    const now = new Date();
 
     // 先把完整訂單明細（含商品清單）以「待付款」狀態寫入 pos_orders，
     // 因為 ECPay 之後通知付款結果時，只會帶回訂單編號、金額，不會帶回購物車明細，
@@ -96,9 +57,9 @@ export default async function handler(req, res) {
           store_name: "TATA 官網",
           staff: "線上訂單",
           items: items.map((i) => ({ name: i.name, qty: i.qty, sku: i.sku || "", variant: i.variantName || "" })),
-          subtotal: itemsSubtotal,
+          subtotal: Math.round(totalAmount),
           discount: 0,
-          total: orderTotal,
+          total: Math.round(totalAmount),
           disc_mode: "none",
           disc_pct: 100,
           disc_amt: 0,
@@ -109,13 +70,7 @@ export default async function handler(req, res) {
           cash_input: 0,
           change_amount: 0,
           member_id: null,
-          member_name: customerName || null,
-          customer_phone: customerPhone || null,
-          customer_email: customerEmail || null,
-          ship_method: shipMethod || null,
-          ship_address: finalShipAddress,
-          recipient_name: customerName || null,
-          recipient_phone: customerPhone || null,
+          member_name: memberEmail || null,
           note: "ECPay待付款",
           type: "pending", // 待付款狀態，收到ecpay-notify確認付款成功後才會更新成 sale
         }),
@@ -136,7 +91,7 @@ export default async function handler(req, res) {
       MerchantTradeNo: orderId, // 訂單編號，須為英數字、20字以內、不可重複
       MerchantTradeDate: formatDate(now),
       PaymentType: "aio",
-      TotalAmount: orderTotal,
+      TotalAmount: Math.round(totalAmount),
       TradeDesc: "TATA線上商店訂單",
       ItemName: itemName,
       ReturnURL: `${baseUrl}/api/ecpay-notify`, // ECPay 背景通知付款結果
