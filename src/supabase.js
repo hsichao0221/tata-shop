@@ -164,3 +164,23 @@ export async function fetchAuthSettings() {
   }
   return DEFAULT_AUTH_SETTINGS;
 }
+
+// 輔助判斷「這個Email是否已經註冊過」。
+// 背景：Supabase 出於防止帳號枚舉攻擊的安全考量，當「Confirm Email」開啟時，
+// 對已註冊過的Email再次呼叫signUp()，會回傳一個偽造的成功結果，不會給出明確錯誤，
+// 這是Supabase官方刻意的設計，不是bug。
+// 所以這裡改用查詢 pos_members 資料表的方式輔助判斷，雖然查的是會員資料表不是Supabase Auth本身，
+// 但對「提醒顧客這個Email已經用過」這個情境已經足夠實用。
+export async function checkEmailExists(email) {
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/pos_members?email=eq.${encodeURIComponent(email)}&select=id&limit=1`,
+      { headers: HEADERS }
+    );
+    const data = await res.json();
+    return Array.isArray(data) && data.length > 0;
+  } catch (e) {
+    console.warn("checkEmailExists failed:", e);
+    return false; // 查詢失敗時，不要阻擋使用者繼續，寧可放行也不要誤擋
+  }
+}
