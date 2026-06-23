@@ -13,7 +13,16 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 function formatDate(d) {
   const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  // 用 getUTC* 讀取欄位，搭配下面建立 now 時已手動加上8小時的偏移量，
+  // 這樣不管 Vercel 伺服器本身設定的時區是什麼，算出來的都一定是台灣時間，不會再有誤差。
+  return `${d.getUTCFullYear()}/${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+}
+
+// 取得台灣時間（UTC+8）的Date物件：Vercel伺服器跑在UTC時區，
+// 直接用 new Date() 會讓訂單時間比實際台灣時間晚8小時，
+// 所以要先把當下時間戳記手動加上8小時，後面再搭配 formatDate 的 getUTC* 讀取，才會顯示正確的台灣時間。
+function nowInTaipei() {
+  return new Date(Date.now() + 8 * 60 * 60 * 1000);
 }
 
 export default async function handler(req, res) {
@@ -42,7 +51,7 @@ export default async function handler(req, res) {
       return;
     }
 
-    const now = new Date();
+    const now = nowInTaipei();
 
     // 先把完整訂單明細（含商品清單）以「待付款」狀態寫入 pos_orders，
     // 因為 ECPay 之後通知付款結果時，只會帶回訂單編號、金額，不會帶回購物車明細，
