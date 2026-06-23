@@ -95,6 +95,24 @@ export function AuthProvider({ children }) {
     return { error };
   }
 
+  async function resetPasswordForEmail(email) {
+    // 發送重設密碼信，顧客點信裡的連結後會被導到 redirectTo 這個網址，
+    // 帶著一組臨時的驗證資訊，讓他在那個頁面輸入新密碼。
+    // 注意：這個功能跟註冊驗證信一樣，需要Supabase設定好自訂SMTP才能真正送達，
+    // 在那之前，即使呼叫成功，信件實際上可能無法送到顧客信箱。
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/update-password`,
+    });
+    return { error };
+  }
+
+  async function updatePassword(newPassword) {
+    // 這個函式只能在顧客「已經透過重設密碼信的連結登入」之後呼叫，
+    // 因為 updateUser 要求使用者必須是已登入狀態
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    return { error };
+  }
+
   async function signInWithProvider(provider) {
     // provider: "facebook" | "google"
     const { error } = await supabase.auth.signInWithOAuth({ provider });
@@ -107,7 +125,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, member, loading, signUpWithEmail, signInWithEmail, signInWithProvider, signOut }}
+      value={{ user, member, loading, signUpWithEmail, signInWithEmail, signInWithProvider, signOut, resetPasswordForEmail, updatePassword }}
     >
       {children}
     </AuthContext.Provider>
