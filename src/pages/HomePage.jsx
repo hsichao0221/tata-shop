@@ -127,12 +127,18 @@ function HeroBannerBlock({ block }) {
 function ImageRowBlock({ block }) {
   const images = (block.images || []).filter((img) => img.imageUrl);
   if (images.length === 0) return null;
+  const ratio = block.ratio || "1:1";
+  const aspect = ratio === "auto" ? undefined : ratio.replace(":", "/");
   return (
     <div style={{ display: "flex", gap: 8, padding: "0 16px", marginBottom: 32, maxWidth: 1200, margin: "0 auto 32px" }}>
       {images.map((img, i) => {
         const inner = (
           <div style={{ position: "relative" }}>
-            <img src={img.imageUrl} alt={img.caption || ""} style={{ width: "100%", display: "block", borderRadius: 4 }} />
+            <img
+              src={img.imageUrl}
+              alt={img.caption || ""}
+              style={{ width: "100%", aspectRatio: aspect, objectFit: "cover", display: "block", borderRadius: 4 }}
+            />
             {img.caption && (
               <div
                 style={{
