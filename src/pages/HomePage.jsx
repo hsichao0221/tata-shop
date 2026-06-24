@@ -87,16 +87,23 @@ function HomepageBlock({ block, categories, products }) {
 }
 
 function HeroBannerBlock({ block }) {
+  const h = Number(block.height) || null;
   const content = (
     <div
       style={{
         textAlign: "center",
-        padding: "48px 16px",
+        padding: h ? "0 16px" : "48px 16px",
+        height: h || undefined,
+        display: h ? "flex" : "block",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
         background: block.imageUrl ? "#222" : "#fafafa",
         backgroundImage: block.imageUrl ? `url(${block.imageUrl})` : undefined,
         backgroundSize: "cover",
         backgroundPosition: "center",
         marginBottom: 32,
+        overflow: "hidden",
       }}
     >
       <h1
