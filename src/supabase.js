@@ -184,3 +184,29 @@ export async function checkEmailExists(email) {
     return false; // 查詢失敗時，不要阻擋使用者繼續，寧可放行也不要誤擋
   }
 }
+
+// ════════════════════════════════════════════════════════════════
+// 配送方式（shop_shipping_methods）
+// 結帳頁顯示的配送選項，由ERP後台「送貨設定」分頁管理，
+// 跟分類管理不同，這個是獨立的資料表（非erp_settings key-value），方便個別欄位編輯。
+// ════════════════════════════════════════════════════════════════
+
+// 讀不到資料時的安全fallback，確保結帳頁至少有「宅配到府」可以選，不會整頁空白
+const DEFAULT_SHIPPING_METHODS = [
+  { id: "home_delivery", name: "宅配到府", method_type: "home_delivery", ecpay_subtype: null, fee_amount: 100, enabled: true, sort_order: 1 },
+];
+
+export async function fetchShippingMethods() {
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/shop_shipping_methods?select=*&enabled=eq.true&order=sort_order.asc`,
+      { headers: HEADERS }
+    );
+    if (!r.ok) return DEFAULT_SHIPPING_METHODS;
+    const d = await r.json();
+    return Array.isArray(d) && d.length > 0 ? d : DEFAULT_SHIPPING_METHODS;
+  } catch (e) {
+    console.warn("fetchShippingMethods failed:", e);
+    return DEFAULT_SHIPPING_METHODS;
+  }
+}
