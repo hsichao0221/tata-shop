@@ -4,6 +4,7 @@ import { CartProvider, useCart } from "./CartContext.jsx";
 import { AuthProvider, useAuth } from "./AuthContext.jsx";
 import { fetchPages } from "./supabase.js";
 import CategoryNav from "./components/CategoryNav.jsx";
+import Footer from "./components/Footer.jsx";
 import HomePage from "./pages/HomePage.jsx";
 import DynamicPage from "./pages/DynamicPage.jsx";
 import ProductListPage from "./pages/ProductListPage.jsx";
@@ -110,6 +111,7 @@ export default function App() {
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/update-password" element={<UpdatePasswordPage />} />
           </Routes>
+          <Footer />
         </BrowserRouter>
       </CartProvider>
     </AuthProvider>

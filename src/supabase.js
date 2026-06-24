@@ -205,6 +205,15 @@ export async function fetchHomepageBlocks() {
   return DEFAULT_HOMEPAGE_BLOCKS;
 }
 
+const DEFAULT_FOOTER = { columns: [], social: {}, copyrightText: "" };
+
+// 頁尾(shop_footer)：全站共用一份，不分頁面。編輯在ERP「網店設計→📜編輯頁尾」，這裡是唯讀。
+export async function fetchFooter() {
+  const saved = await loadSetting("shop_footer");
+  if (saved && typeof saved === "object") return saved;
+  return DEFAULT_FOOTER;
+}
+
 // ════════════════════════════════════════════════════════════════
 // 頁面清單（shop_pages）：仿Shopline的「網店分頁」，可以自由新增/刪除頁面，
 // 任何一頁都能被指定為首頁，每頁都用區塊編輯器管理內容。
