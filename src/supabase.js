@@ -205,6 +205,50 @@ export async function fetchHomepageBlocks() {
   return DEFAULT_HOMEPAGE_BLOCKS;
 }
 
+// ════════════════════════════════════════════════════════════════
+// 頁面清單（shop_pages）：仿Shopline的「網店分頁」，可以自由新增/刪除頁面，
+// 任何一頁都能被指定為首頁，每頁都用區塊編輯器管理內容。
+// 編輯都在ERP後台的「網店設計」進行；這裡是唯讀，給官網渲染用。
+// ════════════════════════════════════════════════════════════════
+export async function fetchPages() {
+  const saved = await loadSetting("shop_pages");
+  if (Array.isArray(saved) && saved.length > 0) return saved;
+  // 還沒建立過頁面清單時，用舊版「首頁編輯器」留下的資料(shop_homepage_blocks)
+  // 自動組成一個「首頁」頁面，確保已經設定好的首頁內容不會憑空消失
+  const legacyBlocks = await fetchHomepageBlocks();
+  return [
+    {
+      id: "page-home",
+      slug: "",
+      title: "首頁",
+      type: "advanced",
+      isHomepage: true,
+      enabled: true,
+      blocks: legacyBlocks,
+    },
+  ];
+}
+
+// 共用的「商品輪播」資料準備邏輯：找出區塊清單裡所有product_carousel類型的區塊，
+// 依各自的來源設定(精選新品/指定分類)抓好商品資料，回傳 {blockId: products[]} 的對照表。
+// 首頁跟自訂頁面共用同一套邏輯，不重複寫。
+export async function resolveBlockProducts(blocks, categories) {
+  const carouselBlocks = (blocks || []).filter((b) => b.type === "product_carousel");
+  if (carouselBlocks.length === 0) return {};
+  const needsFullList = carouselBlocks.some((b) => b.source === "category");
+  const allProducts = needsFullList ? await fetchAllProducts() : null;
+  const productsMap = {};
+  for (const b of carouselBlocks) {
+    if (b.source === "category" && b.categoryId) {
+      const cat = categories.find((c) => c.id === b.categoryId);
+      productsMap[b.id] = filterProductsByCategory(allProducts || [], cat).slice(0, b.limit || 12);
+    } else {
+      productsMap[b.id] = await fetchFeaturedProducts(b.limit || 12);
+    }
+  }
+  return productsMap;
+}
+
 export async function checkEmailExists(email) {
   try {
     const res = await fetch(
