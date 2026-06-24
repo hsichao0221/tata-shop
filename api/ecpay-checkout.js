@@ -34,7 +34,7 @@ export default async function handler(req, res) {
   try {
     const {
       items, totalAmount, shippingFee, orderId,
-      customerName, customerPhone, customerEmail, memberEmail,
+      customerName, customerPhone, customerEmail, memberEmail, memberId,
       shipMethod, shipMethodType, shipAddress,
       cvsStoreId, cvsStoreName, cvsStoreAddress,
     } = req.body;
@@ -113,7 +113,7 @@ export default async function handler(req, res) {
           deposit_used: 0,
           cash_input: 0,
           change_amount: 0,
-          member_id: null,
+          member_id: memberId || null,
           member_name: customerName || memberEmail || null,
           customer_phone: customerPhone || null,
           customer_email: customerEmail || memberEmail || null,

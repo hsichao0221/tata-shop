@@ -17,8 +17,14 @@ export default function AccountPage() {
 
   useEffect(() => {
     if (!user?.email) return;
+    // 優先用member_id比對(較可靠的關聯方式)，同時也用customer_email比對當備援，
+    // 涵蓋「結帳時customer_email跟登入帳號email一致」的情況；
+    // 不再用member_name比對，因為member_name現在存的是客人輸入的真實姓名(給ERP顯示用)，不是Email
+    const orFilter = member?.id
+      ? `or=(member_id.eq.${encodeURIComponent(member.id)},customer_email.eq.${encodeURIComponent(user.email)})`
+      : `customer_email=eq.${encodeURIComponent(user.email)}`;
     fetch(
-      `${SUPABASE_URL}/rest/v1/pos_orders?store_id=eq.web&member_name=eq.${encodeURIComponent(user.email)}&order=date.desc,time.desc&select=*`,
+      `${SUPABASE_URL}/rest/v1/pos_orders?store_id=eq.web&${orFilter}&order=date.desc,time.desc&select=*`,
       { headers: { apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + SUPABASE_ANON_KEY } }
     )
       .then((r) => r.json())
@@ -30,7 +36,7 @@ export default function AccountPage() {
         console.error("讀取訂單失敗:", e);
         setLoading(false);
       });
-  }, [user]);
+  }, [user, member]);
 
   if (authLoading || !user) {
     return <div style={{ textAlign: "center", padding: 60, color: "#999" }}>載入中...</div>;

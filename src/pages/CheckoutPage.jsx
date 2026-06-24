@@ -205,6 +205,7 @@ export default function CheckoutPage() {
           customerPhone: customerInfo.phone.trim(),
           customerEmail: customerInfo.email.trim(),
           memberEmail: user?.email || null,
+          memberId: member?.id || null,
           shipMethod: selectedMethod.name,
           shipMethodType: selectedMethod.method_type,
           shipAddress: customerInfo.address.trim(),
