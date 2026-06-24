@@ -149,8 +149,8 @@ function ImageRowBlock({ block }) {
     : null;
   const ratioDesktop = RATIO_MAP[block.ratioDesktop || legacy || "square"];
   const ratioMobile = RATIO_MAP[block.ratioMobile || legacy || "square"];
-  const perRowDesktop = block.perRowDesktop || 3;
-  const perRowMobile = block.perRowMobile || 2;
+  const perRowDesktop = Math.max(1, Math.min(block.perRowDesktop || 3, images.length));
+  const perRowMobile = Math.max(1, Math.min(block.perRowMobile || 2, images.length));
   const justify = block.textAlign === "left" ? "flex-start" : block.textAlign === "right" ? "flex-end" : "center";
   const alignV = block.verticalAlign === "top" ? "flex-start" : block.verticalAlign === "middle" ? "center" : "flex-end";
   const cls = `ir-${block.id}`;
