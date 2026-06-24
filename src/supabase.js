@@ -91,7 +91,7 @@ export async function fetchCategories() {
 // 寫入分類清單（之後 ShopAdmin 在 ERP 裡編輯分類時會呼叫這個）
 export async function saveCategories(categories, token) {
   try {
-    await fetch(SUPABASE_URL + "/rest/v1/erp_settings", {
+    await fetch(SUPABASE_URL + "/rest/v1/erp_settings?on_conflict=key", {
       method: "POST",
       headers: {
         ...HEADERS,
