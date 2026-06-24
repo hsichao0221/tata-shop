@@ -171,6 +171,40 @@ export async function fetchAuthSettings() {
 // 這是Supabase官方刻意的設計，不是bug。
 // 所以這裡改用查詢 pos_members 資料表的方式輔助判斷，雖然查的是會員資料表不是Supabase Auth本身，
 // 但對「提醒顧客這個Email已經用過」這個情境已經足夠實用。
+// ════════════════════════════════════════════════════════════════
+// 首頁區塊編輯器（shop_homepage_blocks）
+// 整個首頁版面交給這套區塊系統管理，原本寫死的「品牌主視覺+精選新品」
+// 變成預設區塊內容（DEFAULT_HOMEPAGE_BLOCKS），讀不到自訂設定時會用這份預設值，
+// 確保首頁一定有東西可以顯示，不會因為沒設定過而整頁空白。
+// ════════════════════════════════════════════════════════════════
+
+const DEFAULT_HOMEPAGE_BLOCKS = [
+  {
+    id: "default-hero",
+    type: "hero_banner",
+    enabled: true,
+    title: "TATA",
+    subtitle: "台灣女裝童裝品牌・全館2件9折 滿2500折100",
+    imageUrl: "",
+    linkUrl: "",
+  },
+  {
+    id: "default-products",
+    type: "product_carousel",
+    enabled: true,
+    title: "New Arrivals",
+    source: "featured",
+    categoryId: "",
+    limit: 12,
+  },
+];
+
+export async function fetchHomepageBlocks() {
+  const saved = await loadSetting("shop_homepage_blocks");
+  if (Array.isArray(saved) && saved.length > 0) return saved;
+  return DEFAULT_HOMEPAGE_BLOCKS;
+}
+
 export async function checkEmailExists(email) {
   try {
     const res = await fetch(
