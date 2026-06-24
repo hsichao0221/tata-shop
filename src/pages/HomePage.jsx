@@ -131,43 +131,78 @@ function HeroBannerBlock({ block }) {
   );
 }
 
+const RATIO_MAP = { portrait: "3/4", square: "1/1", landscape: "4/3", auto: undefined };
+
 function ImageRowBlock({ block }) {
   const images = (block.images || []).filter((img) => img.imageUrl);
   if (images.length === 0) return null;
-  const ratio = block.ratio || "1:1";
-  const aspect = ratio === "auto" ? undefined : ratio.replace(":", "/");
+
+  // 向下相容：舊資料只有單一ratio欄位(用"寬:高"字串格式)時，轉換成新的桌機/手機分開格式
+  const legacy = block.ratio
+    ? block.ratio === "auto"
+      ? "auto"
+      : block.ratio === "3:4" || block.ratio === "2:3"
+      ? "portrait"
+      : block.ratio === "1:1"
+      ? "square"
+      : "landscape"
+    : null;
+  const ratioDesktop = RATIO_MAP[block.ratioDesktop || legacy || "square"];
+  const ratioMobile = RATIO_MAP[block.ratioMobile || legacy || "square"];
+  const perRowDesktop = block.perRowDesktop || 3;
+  const perRowMobile = block.perRowMobile || 2;
+  const justify = block.textAlign === "left" ? "flex-start" : block.textAlign === "right" ? "flex-end" : "center";
+  const alignV = block.verticalAlign === "top" ? "flex-start" : block.verticalAlign === "middle" ? "center" : "flex-end";
+  const cls = `ir-${block.id}`;
+
   return (
-    <div style={{ display: "flex", gap: 8, padding: "0 16px", marginBottom: 32, maxWidth: 1200, margin: "0 auto 32px" }}>
+    <div
+      className={cls}
+      style={{
+        display: "grid",
+        gridTemplateColumns: `repeat(${perRowDesktop}, 1fr)`,
+        gap: 8,
+        maxWidth: 1200,
+        margin: "0 auto 32px",
+        padding: `${block.marginTop || 0}px ${block.marginRight || 16}px 0 ${block.marginLeft || 16}px`,
+      }}
+    >
       {images.map((img, i) => {
         const inner = (
-          <div style={{ position: "relative" }}>
+          <div className={`${cls}-img`} style={{ position: "relative" }}>
             <img
               src={img.imageUrl}
               alt={img.caption || ""}
-              style={{ width: "100%", aspectRatio: aspect, objectFit: "cover", display: "block", borderRadius: 4 }}
+              style={{ width: "100%", aspectRatio: ratioDesktop, objectFit: "cover", display: "block", borderRadius: 4 }}
             />
             {img.caption && (
               <div
                 style={{
                   position: "absolute",
-                  bottom: 8,
-                  left: 8,
-                  color: "#fff",
-                  fontSize: 12,
-                  textShadow: "0 1px 3px rgba(0,0,0,0.7)",
+                  inset: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: alignV,
+                  alignItems: justify,
+                  padding: 16,
                 }}
               >
-                {img.caption}
+                <div style={{ color: "#fff", fontSize: 13, textShadow: "0 1px 3px rgba(0,0,0,0.7)", textAlign: block.textAlign || "center" }}>
+                  {img.caption}
+                </div>
               </div>
             )}
           </div>
         );
-        return (
-          <div key={i} style={{ flex: 1, minWidth: 0 }}>
-            {img.linkUrl ? <Link to={img.linkUrl}>{inner}</Link> : inner}
-          </div>
-        );
+        return <div key={i}>{img.linkUrl ? <Link to={img.linkUrl}>{inner}</Link> : inner}</div>;
       })}
+      {/* 手機螢幕用真正的CSS media query切換成手機版的每排張數跟比例，桌機/手機可以設定成不同樣式 */}
+      <style>{`
+        @media (max-width: 767px) {
+          .${cls} { grid-template-columns: repeat(${perRowMobile}, 1fr) !important; }
+          .${cls}-img img { aspect-ratio: ${ratioMobile || "auto"} !important; }
+        }
+      `}</style>
     </div>
   );
 }
