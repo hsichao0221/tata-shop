@@ -1,18 +1,16 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { fetchCategories } from "../supabase.js";
 
-// 分類導覽選單：讀取 shop_categories 設定，依 order 排序，
-// 只顯示 showInMenu 為 true 的項目，依分類點擊後導向 /products?category=分類id，
-// 讓 ProductListPage 之後可以依照網址參數，套用對應的篩選條件。
-//
-// 響應式設計：桌面版（≥768px）顯示橫向選單列；
-// 手機版（<768px）改成漢堡選單icon，點擊後從左側滑出垂直清單，
-// 參考TATA現有官網（tata-style.com）手機版的呈現方式。
+// 分類導覽：只在商品列表頁(ProductListPage)使用，不是全站都顯示，避免跟頭部MenuNav的選單重複。
+// 桌面版：左側sticky側邊欄，滾動商品列表時側邊欄會跟著黏住，不用滑回最上面才能切換分類。
+// 手機版：右下角浮動按鈕，同樣固定位置(position:fixed)，滾動到哪都點得到，點開後從左側滑出選單。
 export default function CategoryNav() {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [searchParams] = useSearchParams();
+  const activeId = searchParams.get("category") || "all";
 
   useEffect(() => {
     fetchCategories()
@@ -29,62 +27,74 @@ export default function CategoryNav() {
       });
   }, []);
 
-  // 讀取中或讀取失敗時，不顯示任何東西，不影響 NavBar 其他部分正常運作
   if (loading || categories.length === 0) return null;
 
   const linkTo = (c) => (c.id === "all" ? "/products" : `/products?category=${c.id}`);
 
   return (
     <>
-      {/* 桌面版：橫向選單列。用 CSS class 搭配 media query 控制顯示/隱藏，
-          避免用 JS 判斷視窗寬度（之前處理 ERP 系統時學到，CSS 方式更穩定可靠）。*/}
+      {/* 桌面版：左側sticky側邊欄 */}
       <div
         className="category-nav-desktop"
         style={{
+          position: "sticky",
+          top: 16,
+          alignSelf: "flex-start",
+          width: 160,
+          flexShrink: 0,
           display: "flex",
-          gap: 18,
-          padding: "8px 20px",
-          borderBottom: "1px solid #f0f0f0",
-          overflowX: "auto",
-          whiteSpace: "nowrap",
+          flexDirection: "column",
+          gap: 4,
         }}
       >
-        {categories.map((c) => (
-          <Link
-            key={c.id}
-            to={linkTo(c)}
-            style={{ textDecoration: "none", color: "#444", fontSize: 13, flexShrink: 0 }}
-          >
-            {c.label}
-          </Link>
-        ))}
+        {categories.map((c) => {
+          const isActive = c.id === activeId;
+          return (
+            <Link
+              key={c.id}
+              to={linkTo(c)}
+              style={{
+                textDecoration: "none",
+                color: isActive ? "#fff" : "#444",
+                background: isActive ? "#222" : "transparent",
+                fontSize: 13,
+                padding: "8px 12px",
+                borderRadius: 6,
+                fontWeight: isActive ? 700 : 400,
+              }}
+            >
+              {c.label}
+            </Link>
+          );
+        })}
       </div>
 
-      {/* 手機版：漢堡選單icon */}
-      <div
-        className="category-nav-mobile-bar"
+      {/* 手機版：右下角浮動按鈕，固定位置不會隨頁面滾動跑掉 */}
+      <button
+        className="category-nav-mobile-fab"
+        onClick={() => setMobileMenuOpen(true)}
+        aria-label="開啟分類選單"
         style={{
           display: "none",
-          padding: "8px 20px",
-          borderBottom: "1px solid #f0f0f0",
+          position: "fixed",
+          right: 16,
+          bottom: 24,
+          zIndex: 90,
+          background: "#222",
+          color: "#fff",
+          border: "none",
+          borderRadius: 24,
+          padding: "12px 18px",
+          fontSize: 14,
+          fontWeight: 700,
+          boxShadow: "0 4px 16px rgba(0,0,0,0.25)",
+          cursor: "pointer",
         }}
       >
-        <button
-          onClick={() => setMobileMenuOpen(true)}
-          style={{
-            background: "none",
-            border: "none",
-            fontSize: 18,
-            cursor: "pointer",
-            padding: 0,
-          }}
-          aria-label="開啟分類選單"
-        >
-          ☰ 分類
-        </button>
-      </div>
+        ☰ 分類
+      </button>
 
-      {/* 手機版：點擊漢堡icon後，從左側滑出的垂直選單 */}
+      {/* 手機版：點擊浮動按鈕後，從左側滑出的垂直選單 */}
       {mobileMenuOpen && (
         <div
           style={{
@@ -118,23 +128,27 @@ export default function CategoryNav() {
                 ×
               </button>
             </div>
-            {categories.map((c) => (
-              <Link
-                key={c.id}
-                to={linkTo(c)}
-                onClick={() => setMobileMenuOpen(false)}
-                style={{
-                  display: "block",
-                  textDecoration: "none",
-                  color: "#222",
-                  fontSize: 16,
-                  padding: "14px 20px",
-                  borderBottom: "1px solid #f5f5f5",
-                }}
-              >
-                {c.label}
-              </Link>
-            ))}
+            {categories.map((c) => {
+              const isActive = c.id === activeId;
+              return (
+                <Link
+                  key={c.id}
+                  to={linkTo(c)}
+                  onClick={() => setMobileMenuOpen(false)}
+                  style={{
+                    display: "block",
+                    textDecoration: "none",
+                    color: isActive ? "#fff" : "#222",
+                    background: isActive ? "#222" : "transparent",
+                    fontSize: 16,
+                    padding: "14px 20px",
+                    borderBottom: "1px solid #f5f5f5",
+                  }}
+                >
+                  {c.label}
+                </Link>
+              );
+            })}
           </div>
         </div>
       )}
@@ -142,7 +156,7 @@ export default function CategoryNav() {
       <style>{`
         @media (max-width: 767px) {
           .category-nav-desktop { display: none !important; }
-          .category-nav-mobile-bar { display: block !important; }
+          .category-nav-mobile-fab { display: block !important; }
         }
       `}</style>
     </>

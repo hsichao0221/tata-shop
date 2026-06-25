@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
+import { useState } from "react";
 import { CartProvider, useCart } from "./CartContext.jsx";
 import { AuthProvider, useAuth } from "./AuthContext.jsx";
-import CategoryNav from "./components/CategoryNav.jsx";
 import Footer from "./components/Footer.jsx";
 import MenuNav from "./components/MenuNav.jsx";
 import HomePage from "./pages/HomePage.jsx";
@@ -23,13 +23,10 @@ import UpdatePasswordPage from "./pages/UpdatePasswordPage.jsx";
 function NavBar() {
   const { totalQty } = useCart();
   const { user } = useAuth();
+  const [mobileOpen, setMobileOpen] = useState(false);
   return (
     <nav
       style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        padding: "12px 20px",
         borderBottom: "1px solid #eee",
         position: "sticky",
         top: 0,
@@ -37,14 +34,34 @@ function NavBar() {
         zIndex: 10,
       }}
     >
-      <Link to="/" style={{ textDecoration: "none", color: "#222", fontWeight: 700, fontSize: 18, letterSpacing: 1 }}>
-        TATA
-      </Link>
-      <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-        <MenuNav />
-        <Link to={user ? "/account" : "/login"} style={{ textDecoration: "none", color: "#222", fontSize: 14 }}>
-          {user ? "我的帳戶" : "登入"}
-        </Link>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "12px 20px",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          {/* 手機版漢堡按鈕：點開才看到選單項目，不會跟Logo/購物車擠成一團 */}
+          <button
+            className="navbar-hamburger"
+            onClick={() => setMobileOpen((v) => !v)}
+            aria-label="開啟選單"
+            style={{ display: "none", background: "none", border: "none", fontSize: 22, padding: 0, cursor: "pointer" }}
+          >
+            ☰
+          </button>
+          <Link to="/" style={{ textDecoration: "none", color: "#222", fontWeight: 700, fontSize: 18, letterSpacing: 1 }}>
+            TATA
+          </Link>
+        </div>
+        <div className="navbar-desktop-items" style={{ display: "flex", alignItems: "center", gap: 20 }}>
+          <MenuNav />
+          <Link to={user ? "/account" : "/login"} style={{ textDecoration: "none", color: "#222", fontSize: 14 }}>
+            {user ? "我的帳戶" : "登入"}
+          </Link>
+        </div>
         <Link to="/cart" style={{ textDecoration: "none", color: "#222", fontSize: 14, position: "relative" }}>
           🛒 購物車
           {totalQty > 0 && (
@@ -66,6 +83,30 @@ function NavBar() {
           )}
         </Link>
       </div>
+
+      {/* 手機版：點漢堡按鈕後展開的選單面板，垂直排列不會擠在一起 */}
+      {mobileOpen && (
+        <div
+          className="navbar-mobile-panel"
+          style={{ borderTop: "1px solid #f0f0f0", padding: "12px 20px", display: "flex", flexDirection: "column", gap: 14 }}
+        >
+          <MenuNav vertical />
+          <Link
+            to={user ? "/account" : "/login"}
+            onClick={() => setMobileOpen(false)}
+            style={{ textDecoration: "none", color: "#222", fontSize: 14 }}
+          >
+            {user ? "我的帳戶" : "登入"}
+          </Link>
+        </div>
+      )}
+
+      <style>{`
+        @media (max-width: 767px) {
+          .navbar-hamburger { display: block !important; }
+          .navbar-desktop-items { display: none !important; }
+        }
+      `}</style>
     </nav>
   );
 }
@@ -76,7 +117,6 @@ export default function App() {
       <CartProvider>
         <BrowserRouter>
           <NavBar />
-          <CategoryNav />
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/pages/:slug" element={<DynamicPage />} />
