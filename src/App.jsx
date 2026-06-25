@@ -1,10 +1,9 @@
 import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
-import { useEffect, useState } from "react";
 import { CartProvider, useCart } from "./CartContext.jsx";
 import { AuthProvider, useAuth } from "./AuthContext.jsx";
-import { fetchPages } from "./supabase.js";
 import CategoryNav from "./components/CategoryNav.jsx";
 import Footer from "./components/Footer.jsx";
+import MenuNav from "./components/MenuNav.jsx";
 import HomePage from "./pages/HomePage.jsx";
 import DynamicPage from "./pages/DynamicPage.jsx";
 import ProductListPage from "./pages/ProductListPage.jsx";
@@ -17,26 +16,9 @@ import AccountPage from "./pages/AccountPage.jsx";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage.jsx";
 import UpdatePasswordPage from "./pages/UpdatePasswordPage.jsx";
 
-// 自訂頁面選單：讀取頁面清單裡「不是首頁」且「啟用中」的頁面，動態顯示成導覽連結，
-// 之後ERP那邊新增/刪除頁面，這裡不用改code就會自動跟著變
-function CustomPagesNav() {
-  const [pages, setPages] = useState([]);
-  useEffect(() => {
-    fetchPages()
-      .then((all) => setPages(all.filter((p) => !p.isHomepage && p.enabled !== false && p.slug)))
-      .catch(() => setPages([]));
-  }, []);
-  if (pages.length === 0) return null;
-  return (
-    <>
-      {pages.map((p) => (
-        <Link key={p.id} to={`/pages/${p.slug}`} style={{ textDecoration: "none", color: "#222", fontSize: 14 }}>
-          {p.title}
-        </Link>
-      ))}
-    </>
-  );
-}
+// 注意：選單現在統一由MenuNav管理(讀取ERP「網店設計→🧭編輯目錄」的設定)，
+// 不再自動列出所有頁面——要顯示在導覽列的頁面，需要在ERP的網店目錄裡手動加進去，
+// 這樣才能控制顯示順序、是否要放進下拉群組等。
 
 function NavBar() {
   const { totalQty } = useCart();
@@ -59,10 +41,7 @@ function NavBar() {
         TATA
       </Link>
       <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-        <Link to="/products" style={{ textDecoration: "none", color: "#222", fontSize: 14 }}>
-          所有商品
-        </Link>
-        <CustomPagesNav />
+        <MenuNav />
         <Link to={user ? "/account" : "/login"} style={{ textDecoration: "none", color: "#222", fontSize: 14 }}>
           {user ? "我的帳戶" : "登入"}
         </Link>

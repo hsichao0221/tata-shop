@@ -214,6 +214,13 @@ export async function fetchFooter() {
   return DEFAULT_FOOTER;
 }
 
+// 網店目錄(shop_menu)：頭部導覽選單，全站共用一份。編輯在ERP「網店設計→🧭編輯目錄」，這裡是唯讀。
+export async function fetchMenu() {
+  const saved = await loadSetting("shop_menu");
+  if (Array.isArray(saved) && saved.length > 0) return saved;
+  return [{ id: "menu-default", label: "所有商品", type: "link", target: "/products", children: [] }];
+}
+
 // ════════════════════════════════════════════════════════════════
 // 頁面清單（shop_pages）：仿Shopline的「網店分頁」，可以自由新增/刪除頁面，
 // 任何一頁都能被指定為首頁，每頁都用區塊編輯器管理內容。
