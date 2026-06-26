@@ -16,7 +16,7 @@ export default function CategoryNav() {
     fetchCategories()
       .then((list) => {
         const menuItems = (list || [])
-          .filter((c) => c.showInMenu)
+          .filter((c) => c.showInMenu !== false)
           .sort((a, b) => (a.order || 0) - (b.order || 0));
         setCategories(menuItems);
         setLoading(false);
