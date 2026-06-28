@@ -70,15 +70,14 @@ export async function fetchFeaturedProducts(limit = 12) {
 const DEFAULT_CATEGORIES = [
   { id: "all", label: "所有商品", filterMode: "all", order: 0, showInMenu: true },
   { id: "tops", label: "上衣", filterMode: "category", filterValue: "上衣", order: 10, showInMenu: true },
-  { id: "skirts", label: "裙子", filterMode: "category", filterValue: "裙子", order: 11, showInMenu: true },
-  { id: "trousers", label: "褲子", filterMode: "category", filterValue: "褲子", order: 12, showInMenu: true },
-  { id: "tshirts", label: "T恤", filterMode: "category", filterValue: "T恤", order: 13, showInMenu: true },
-  { id: "outwears", label: "外套", filterMode: "category", filterValue: "外套", order: 14, showInMenu: true },
-  { id: "coats", label: "大衣", filterMode: "category", filterValue: "大衣", order: 15, showInMenu: true },
-  { id: "dresses", label: "洋裝/套裝", filterMode: "category", filterValue: "洋裝/套裝", order: 16, showInMenu: true },
-  { id: "knitwears", label: "針織上衣", filterMode: "category", filterValue: "針織上衣", order: 17, showInMenu: true },
-  { id: "accessories", label: "配件", filterMode: "category", filterValue: "配件", order: 18, showInMenu: true },
-  { id: "kids", label: "童裝", filterMode: "group", filterValue: "童裝", order: 20, showInMenu: true },
+  { id: "bottoms", label: "下著", filterMode: "category", filterValue: "下著", order: 11, showInMenu: true },
+  { id: "outerwear", label: "外套", filterMode: "category", filterValue: "外套", order: 12, showInMenu: true },
+  { id: "dresses", label: "洋裝", filterMode: "category", filterValue: "洋裝", order: 13, showInMenu: true },
+  { id: "accessories", label: "配件", filterMode: "category", filterValue: "配件", order: 14, showInMenu: true },
+  { id: "kids_tops", label: "童上衣", filterMode: "category", filterValue: "童上衣", order: 20, showInMenu: true },
+  { id: "kids_bottoms", label: "童下著", filterMode: "category", filterValue: "童下著", order: 21, showInMenu: true },
+  { id: "kids_outerwear", label: "童外套", filterMode: "category", filterValue: "童外套", order: 22, showInMenu: true },
+  { id: "kids_dresses", label: "童洋裝", filterMode: "category", filterValue: "童洋裝", order: 23, showInMenu: true },
 ];
 
 // 讀取分類清單：讀不到自訂分類時，回傳上面這份預設清單，確保網站一定能正常顯示分類選單
