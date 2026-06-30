@@ -48,7 +48,7 @@ export default async function handler(req, res) {
         external_email_enabled: true,
         mailer_autoconfirm: false,
         smtp_host: host.trim(),
-        smtp_port: Number(port),
+        smtp_port: String(port).trim(),
         smtp_user: user.trim(),
         smtp_pass: pass,
         smtp_admin_email: senderEmail.trim(),
