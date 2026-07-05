@@ -6,6 +6,26 @@ import CategoryNav from "../components/CategoryNav.jsx";
 
 const PAGE_SIZE = 30;
 
+const SORT_OPTIONS = [
+  { value: "default", label: "預設排序" },
+  { value: "newest", label: "最新上架" },
+  { value: "price_asc", label: "價格低到高" },
+  { value: "price_desc", label: "價格高到低" },
+];
+
+// 排序函式：newest 用 createdAt(沒有的舊商品視為最舊，排在最後面，不會出錯或消失)
+function sortProducts(products, sortBy) {
+  const list = [...products];
+  if (sortBy === "newest") {
+    list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  } else if (sortBy === "price_asc") {
+    list.sort((a, b) => (a.salePrice ?? a.price ?? 0) - (b.salePrice ?? b.price ?? 0));
+  } else if (sortBy === "price_desc") {
+    list.sort((a, b) => (b.salePrice ?? b.price ?? 0) - (a.salePrice ?? a.price ?? 0));
+  }
+  return list;
+}
+
 export default function ProductListPage() {
   const [searchParams] = useSearchParams();
   const categoryId = searchParams.get("category");
@@ -15,6 +35,7 @@ export default function ProductListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [sortBy, setSortBy] = useState("default");
 
   useEffect(() => {
     Promise.all([fetchAllProducts(), fetchCategories()])
@@ -38,7 +59,7 @@ export default function ProductListPage() {
   // 依網址上的 category 參數，找到對應的分類定義；找不到就視為「全部」，
   // filterProductsByCategory 在找不到分類定義時本身也有 fallback 回傳全部上架商品，雙重保險
   const activeCategory = categories.find((c) => c.id === categoryId);
-  const filteredProducts = filterProductsByCategory(allProducts, activeCategory);
+  const filteredProducts = sortProducts(filterProductsByCategory(allProducts, activeCategory), sortBy);
 
   const visibleProducts = filteredProducts.slice(0, visibleCount);
   const hasMore = visibleCount < filteredProducts.length;
@@ -66,8 +87,19 @@ export default function ProductListPage() {
 
         {!loading && !error && (
           <>
-            <div style={{ color: "#999", fontSize: 13, marginBottom: 16 }}>
-              共 {filteredProducts.length} 件商品上架中
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
+              <div style={{ color: "#999", fontSize: 13 }}>
+                共 {filteredProducts.length} 件商品上架中
+              </div>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                style={{ padding: "6px 10px", fontSize: 13, border: "1px solid #ddd", borderRadius: 4, background: "#fff", color: "#333", cursor: "pointer" }}
+              >
+                {SORT_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
             </div>
 
             <div
