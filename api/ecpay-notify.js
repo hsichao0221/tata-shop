@@ -1,10 +1,27 @@
 import { generateCheckMacValue } from "./_ecpayUtils.js";
 
-const HASH_KEY = "5294y06JbISpM5x9";
-const HASH_IV = "v77hoKGq4kWxNNIS";
+const DEFAULT_HASH_KEY = "5294y06JbISpM5x9";
+const DEFAULT_HASH_IV = "v77hoKGq4kWxNNIS";
 
 const SUPABASE_URL = "https://vsqdzntwavegnwctzzgx.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZzcWR6bnR3YXZlZ253Y3R6emd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMjEyOTMsImV4cCI6MjA5Mzc5NzI5M30.vkZTXD-XnDH07AYrYTA0k8quTWInwLN_s4oMr70u7nY";
+
+// 必須跟 ecpay-checkout.js 讀取同一組設定，否則驗證碼會不一致而被誤判為偽造請求
+async function loadEcpayConfig() {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/erp_settings?key=eq.ecpayConfig&select=value`, {
+      headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": "Bearer " + SUPABASE_ANON_KEY },
+    });
+    if (!r.ok) return null;
+    const rows = await r.json();
+    const cfg = rows && rows[0] && rows[0].value;
+    if (cfg && typeof cfg === "object" && cfg.merchantId && cfg.hashKey && cfg.hashIV) return cfg;
+    return null;
+  } catch (e) {
+    console.warn("讀取金流設定失敗，改用預設測試金鑰:", e);
+    return null;
+  }
+}
 
 export default async function handler(req, res) {
   // ECPay 是用 server-to-server 的方式 POST 通知付款結果，
@@ -13,6 +30,10 @@ export default async function handler(req, res) {
   try {
     const data = req.body;
     const receivedCheckMac = data.CheckMacValue;
+
+    const cfg = await loadEcpayConfig();
+    const HASH_KEY = cfg?.hashKey || DEFAULT_HASH_KEY;
+    const HASH_IV = cfg?.hashIV || DEFAULT_HASH_IV;
 
     // 驗證檢查碼：把收到的參數（除了 CheckMacValue 本身）重新計算一次，
     // 比對是否跟 ECPay 傳來的一致，確認這個通知真的是 ECPay 發出的，不是偽造的請求
