@@ -1,15 +1,34 @@
 import { generateCheckMacValue } from "./_ecpayUtils.js";
 
 // ECPay 測試環境設定（官方公開測試值，任何開發者都能用來測試串接流程）
-// 等正式申請好商家帳號後，把下面三個值換成正式的，即可切換成正式收款環境
-const MERCHANT_ID = "2000132";
-const HASH_KEY = "5294y06JbISpM5x9";
-const HASH_IV = "v77hoKGq4kWxNNIS";
-const ECPAY_CHECKOUT_URL = "https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5";
+// 這組僅作為「後台尚未設定金流」時的 fallback，確保沒設定時行為跟現在完全一致。
+const DEFAULT_MERCHANT_ID = "2000132";
+const DEFAULT_HASH_KEY = "5294y06JbISpM5x9";
+const DEFAULT_HASH_IV = "v77hoKGq4kWxNNIS";
+const ECPAY_URL_TEST = "https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5";
+const ECPAY_URL_PROD = "https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5";
 
 // 共用 fashion-erp 同一個 Supabase 專案
 const SUPABASE_URL = "https://vsqdzntwavegnwctzzgx.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZzcWR6bnR3YXZlZ253Y3R6emd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMjEyOTMsImV4cCI6MjA5Mzc5NzI5M30.vkZTXD-XnDH07AYrYTA0k8quTWInwLN_s4oMr70u7nY";
+
+// 讀取後台「金流設定」頁存的租戶自訂設定；讀不到、格式不對、或MerchantID沒填，
+// 就回傳null，呼叫端會fallback用上面的官方測試金鑰，確保沒設定時行為完全不變。
+async function loadEcpayConfig() {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/erp_settings?key=eq.ecpayConfig&select=value`, {
+      headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": "Bearer " + SUPABASE_ANON_KEY },
+    });
+    if (!r.ok) return null;
+    const rows = await r.json();
+    const cfg = rows && rows[0] && rows[0].value;
+    if (cfg && typeof cfg === "object" && cfg.merchantId && cfg.hashKey && cfg.hashIV) return cfg;
+    return null;
+  } catch (e) {
+    console.warn("讀取金流設定失敗，改用預設測試金鑰:", e);
+    return null;
+  }
+}
 
 function formatDate(d) {
   const pad = (n) => String(n).padStart(2, "0");
@@ -79,6 +98,13 @@ export default async function handler(req, res) {
         : (shipAddress || null);
 
     const now = nowInTaipei();
+
+    // 讀取租戶自訂金流設定；沒設定就用預設測試金鑰(行為與改動前完全一致)
+    const cfg = await loadEcpayConfig();
+    const MERCHANT_ID = cfg?.merchantId || DEFAULT_MERCHANT_ID;
+    const HASH_KEY = cfg?.hashKey || DEFAULT_HASH_KEY;
+    const HASH_IV = cfg?.hashIV || DEFAULT_HASH_IV;
+    const ECPAY_CHECKOUT_URL = (cfg?.env === "prod") ? ECPAY_URL_PROD : ECPAY_URL_TEST;
 
     // 先把完整訂單明細（含商品清單）以「待付款」狀態寫入 pos_orders，
     // 因為 ECPay 之後通知付款結果時，只會帶回訂單編號、金額，不會帶回購物車明細，
