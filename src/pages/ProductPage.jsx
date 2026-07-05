@@ -76,9 +76,6 @@ export default function ProductPage() {
   }
 
   const variants = product.variants || [];
-  // 主要圖片 + 更多商品圖片 合併顯示，讓官網呈現完整的圖片(ERP後台管理時仍分開兩區，只是顯示端合併)
-  const galleryImages = [...(product.images || []), ...(product.moreImages || [])];
-  const galleryAlts = [...(product.imageAlts || []), ...(product.moreImageAlts || [])];
   const availableVariants = variants.filter((v) => !v.discontinued && v.qty > 0);
 
   return (
@@ -108,19 +105,19 @@ export default function ProductPage() {
               borderRadius: 8,
             }}
           >
-            {galleryImages[activeImg] ? (
+            {product.images?.[activeImg] ? (
               <img
-                src={galleryImages[activeImg]}
-                alt={galleryAlts[activeImg] || product.name}
+                src={product.images[activeImg]}
+                alt={(product.imageAlts && product.imageAlts[activeImg]) || product.name}
                 style={{ width: "100%", height: "100%", objectFit: "cover" }}
               />
             ) : (
               "無圖片"
             )}
           </div>
-          {galleryImages.length > 1 && (
+          {product.images && product.images.length > 1 && (
             <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-              {galleryImages.map((img, i) => (
+              {product.images.map((img, i) => (
                 <button
                   key={i}
                   onClick={() => setActiveImg(i)}
@@ -133,7 +130,7 @@ export default function ProductPage() {
                 >
                   <img
                     src={img}
-                    alt={galleryAlts[i] || `${product.name} ${i + 1}`}
+                    alt={(product.imageAlts && product.imageAlts[i]) || `${product.name} ${i + 1}`}
                     style={{ width: "100%", height: "100%", objectFit: "cover" }}
                   />
                 </button>
@@ -244,6 +241,19 @@ export default function ProductPage() {
               line.trim() ? <p key={i} style={{ margin: "0 0 10px" }}>{line}</p> : <br key={i} />
             )}
           </div>
+        </div>
+      )}
+
+      {product.moreImages && product.moreImages.length > 0 && (
+        <div style={{ marginTop: 40, maxWidth: 500, marginLeft: "auto", marginRight: "auto" }}>
+          {product.moreImages.map((img, i) => (
+            <img
+              key={i}
+              src={img}
+              alt={(product.moreImageAlts && product.moreImageAlts[i]) || `${product.name} 細節圖 ${i + 1}`}
+              style={{ width: "100%", display: "block", marginBottom: 16, borderRadius: 4 }}
+            />
+          ))}
         </div>
       )}
     </div>
