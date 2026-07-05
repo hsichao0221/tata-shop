@@ -3,6 +3,35 @@ import { useParams, Link } from "react-router-dom";
 import { fetchAllProducts } from "../supabase.js";
 import { useCart } from "../CartContext.jsx";
 
+// 依商品資料設定頁面SEO(title/description/keywords)。
+// 有填seoTitle/seoDescription/seoKeywords就用客戶自己填的，沒填就自動退回商品名稱/描述前150字，
+// 確保沒有特別去後台設定SEO的商品，頁面還是有基本的meta資訊，不會是空的。
+function useProductSeo(product) {
+  useEffect(() => {
+    if (!product) return;
+    const prevTitle = document.title;
+    const title = product.seoTitle || product.name;
+    document.title = title ? `${title} | TATA` : document.title;
+
+    const desc = product.seoDescription || product.summary || (product.description || "").slice(0, 150);
+    let metaDesc = document.querySelector('meta[name="description"]');
+    if (!metaDesc) { metaDesc = document.createElement("meta"); metaDesc.setAttribute("name", "description"); document.head.appendChild(metaDesc); }
+    const prevDesc = metaDesc.getAttribute("content");
+    if (desc) metaDesc.setAttribute("content", desc);
+
+    let metaKw = document.querySelector('meta[name="keywords"]');
+    if (product.seoKeywords) {
+      if (!metaKw) { metaKw = document.createElement("meta"); metaKw.setAttribute("name", "keywords"); document.head.appendChild(metaKw); }
+      metaKw.setAttribute("content", product.seoKeywords);
+    }
+
+    return () => {
+      document.title = prevTitle;
+      if (metaDesc && prevDesc !== null) metaDesc.setAttribute("content", prevDesc);
+    };
+  }, [product]);
+}
+
 export default function ProductPage() {
   const { sku } = useParams();
   const { addItem } = useCart();
@@ -10,6 +39,9 @@ export default function ProductPage() {
   const [loading, setLoading] = useState(true);
   const [selectedVariant, setSelectedVariant] = useState(null);
   const [justAdded, setJustAdded] = useState(false);
+  const [activeImg, setActiveImg] = useState(0);
+
+  useProductSeo(product);
 
   useEffect(() => {
     fetchAllProducts().then((all) => {
@@ -17,6 +49,10 @@ export default function ProductPage() {
       setProduct(found || null);
       setLoading(false);
     });
+  }, [sku]);
+
+  useEffect(() => {
+    setActiveImg(0);
   }, [sku]);
 
   function handleAddToCart() {
@@ -56,26 +92,50 @@ export default function ProductPage() {
           marginTop: 16,
         }}
       >
-        <div
-          style={{
-            aspectRatio: "3/4",
-            background: "#f5f5f5",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "#ccc",
-            overflow: "hidden",
-            borderRadius: 8,
-          }}
-        >
-          {product.images?.[0] ? (
-            <img
-              src={product.images[0]}
-              alt={product.name}
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            />
-          ) : (
-            "無圖片"
+        <div>
+          <div
+            style={{
+              aspectRatio: "3/4",
+              background: "#f5f5f5",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#ccc",
+              overflow: "hidden",
+              borderRadius: 8,
+            }}
+          >
+            {product.images?.[activeImg] ? (
+              <img
+                src={product.images[activeImg]}
+                alt={(product.imageAlts && product.imageAlts[activeImg]) || product.name}
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              />
+            ) : (
+              "無圖片"
+            )}
+          </div>
+          {product.images && product.images.length > 1 && (
+            <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+              {product.images.map((img, i) => (
+                <button
+                  key={i}
+                  onClick={() => setActiveImg(i)}
+                  style={{
+                    width: 56, height: 56, padding: 0, overflow: "hidden",
+                    borderRadius: 6, cursor: "pointer",
+                    border: activeImg === i ? "2px solid #c0392b" : "1px solid #ddd",
+                    background: "#f5f5f5",
+                  }}
+                >
+                  <img
+                    src={img}
+                    alt={(product.imageAlts && product.imageAlts[i]) || `${product.name} ${i + 1}`}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                </button>
+              ))}
+            </div>
           )}
         </div>
 
@@ -83,6 +143,11 @@ export default function ProductPage() {
           <h1 style={{ fontSize: 20, fontWeight: 700, margin: "0 0 4px" }}>
             {product.name}
           </h1>
+          {product.summary && (
+            <div style={{ color: "#666", fontSize: 13, marginBottom: 8, lineHeight: 1.5 }}>
+              {product.summary}
+            </div>
+          )}
           <div style={{ color: "#999", fontSize: 12, marginBottom: 16 }}>
             貨號：{product.sku}
           </div>
@@ -167,6 +232,17 @@ export default function ProductPage() {
           )}
         </div>
       </div>
+
+      {product.description && (
+        <div style={{ marginTop: 40, paddingTop: 24, borderTop: "1px solid #eee" }}>
+          <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>商品描述</h2>
+          <div style={{ color: "#444", fontSize: 14, lineHeight: 1.9 }}>
+            {product.description.split("\n").map((line, i) =>
+              line.trim() ? <p key={i} style={{ margin: "0 0 10px" }}>{line}</p> : <br key={i} />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
