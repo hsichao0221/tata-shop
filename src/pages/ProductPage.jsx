@@ -76,6 +76,9 @@ export default function ProductPage() {
   }
 
   const variants = product.variants || [];
+  // 主要圖片 + 更多商品圖片 合併顯示，讓官網呈現完整的圖片(ERP後台管理時仍分開兩區，只是顯示端合併)
+  const galleryImages = [...(product.images || []), ...(product.moreImages || [])];
+  const galleryAlts = [...(product.imageAlts || []), ...(product.moreImageAlts || [])];
   const availableVariants = variants.filter((v) => !v.discontinued && v.qty > 0);
 
   return (
@@ -105,19 +108,19 @@ export default function ProductPage() {
               borderRadius: 8,
             }}
           >
-            {product.images?.[activeImg] ? (
+            {galleryImages[activeImg] ? (
               <img
-                src={product.images[activeImg]}
-                alt={(product.imageAlts && product.imageAlts[activeImg]) || product.name}
+                src={galleryImages[activeImg]}
+                alt={galleryAlts[activeImg] || product.name}
                 style={{ width: "100%", height: "100%", objectFit: "cover" }}
               />
             ) : (
               "無圖片"
             )}
           </div>
-          {product.images && product.images.length > 1 && (
+          {galleryImages.length > 1 && (
             <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-              {product.images.map((img, i) => (
+              {galleryImages.map((img, i) => (
                 <button
                   key={i}
                   onClick={() => setActiveImg(i)}
@@ -130,7 +133,7 @@ export default function ProductPage() {
                 >
                   <img
                     src={img}
-                    alt={(product.imageAlts && product.imageAlts[i]) || `${product.name} ${i + 1}`}
+                    alt={galleryAlts[i] || `${product.name} ${i + 1}`}
                     style={{ width: "100%", height: "100%", objectFit: "cover" }}
                   />
                 </button>
