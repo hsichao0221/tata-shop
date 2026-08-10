@@ -45,26 +45,35 @@ export default async function handler(req, res) {
       return;
     }
 
-    // Resend 一次呼叫最多支援 100 位收件人(用 bcc 隱藏收件人名單，避免會員互相看到彼此email)，
-    // 這裡分批處理，每批最多50人，避免單次請求過大或觸發Resend限流
+    // Resend 一次呼叫最多支援 100 位收件人。多人時用bcc隱藏收件人名單(避免會員彼此看到email)，
+    // 但只有1位收件人時(例如測試發送)直接放在to欄位，不用bcc搭配假的to，
+    // 這種寫法在部分收信端(如Gmail)容易被判定成可疑郵件、更容易進垃圾信匣或被直接過濾掉
     const BATCH = 50;
     const results = { sent: 0, failed: 0, errors: [] };
     for (let i = 0; i < recipients.length; i += BATCH) {
       const batch = recipients.slice(i, i + BATCH);
       try {
+        const payload = batch.length === 1
+          ? {
+              from: `${senderName || "TATA"} <${senderEmail}>`,
+              to: batch,
+              subject,
+              html,
+            }
+          : {
+              from: `${senderName || "TATA"} <${senderEmail}>`,
+              to: [senderEmail], // 主收件人放自己，實際收件人用bcc隱藏，避免會員彼此看到email
+              bcc: batch,
+              subject,
+              html,
+            };
         const r = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: {
             Authorization: `Bearer ${apiKey}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            from: `${senderName || "TATA"} <${senderEmail}>`,
-            to: [senderEmail], // 主收件人放自己，實際收件人用bcc隱藏，避免會員彼此看到email
-            bcc: batch,
-            subject,
-            html,
-          }),
+          body: JSON.stringify(payload),
         });
         const data = await r.json().catch(() => ({}));
         if (r.ok) {
