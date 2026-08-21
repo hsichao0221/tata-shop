@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { fetchAllProducts, fetchCategories, filterProductsByCategory, filterActiveProducts } from "../supabase.js";
+import { fetchAllProducts, fetchCategories, filterProductsByCategory, filterActiveProducts, fetchSalesCountBySku } from "../supabase.js";
 import ProductCard from "../components/ProductCard.jsx";
 import CategoryNav from "../components/CategoryNav.jsx";
 
@@ -8,6 +8,7 @@ const PAGE_SIZE = 30;
 
 const SORT_OPTIONS = [
   { value: "newest", label: "最新上架" },
+  { value: "popularity", label: "熱銷優先" },
   { value: "default", label: "商品原始順序" },
   { value: "price_asc", label: "價格低到高" },
   { value: "price_desc", label: "價格高到低" },
@@ -20,11 +21,22 @@ function isInStock(product) {
   return product.variants.some((v) => !v.discontinued && Number(v.qty) > 0);
 }
 
+// 商品的銷量 = 加總這個商品所有款式(variants)的銷量。沒有銷售紀錄的商品視為0，
+// 不會出錯或排到奇怪的位置。
+function getProductSalesCount(product, salesCount) {
+  if (!salesCount) return 0;
+  const skus = (product.variants || []).map((v) => v.sku).filter(Boolean);
+  if (product.sku) skus.push(product.sku);
+  return skus.reduce((sum, sku) => sum + (salesCount[sku] || 0), 0);
+}
+
 // 排序函式：newest 用 createdAt(沒有的舊商品視為最舊，排在最後面，不會出錯或消失)
-function sortProducts(products, sortBy) {
+function sortProducts(products, sortBy, salesCount) {
   const list = [...products];
   if (sortBy === "newest") {
     list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  } else if (sortBy === "popularity") {
+    list.sort((a, b) => getProductSalesCount(b, salesCount) - getProductSalesCount(a, salesCount));
   } else if (sortBy === "price_asc") {
     list.sort((a, b) => (a.salePrice ?? a.price ?? 0) - (b.salePrice ?? b.price ?? 0));
   } else if (sortBy === "price_desc") {
@@ -42,6 +54,7 @@ export default function ProductListPage() {
 
   const [allProducts, setAllProducts] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [salesCount, setSalesCount] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
@@ -50,10 +63,6 @@ export default function ProductListPage() {
   useEffect(() => {
     Promise.all([fetchAllProducts(), fetchCategories()])
       .then(([products, cats]) => {
-        // 暫時偵錯用：確認商品資料到底有沒有抓到、篩選前後數量對不對，
-        // 排查完「官網看不到新商品」這個問題後會移除
-        console.log("[偵錯] 原始商品總數:", products.length);
-        console.log("[偵錯] 有沒有T2F-S10036系列:", products.filter(p=>(p.sku||"").includes("T2F-S10036")||(p.name||"").includes("T2F-S10036")));
         setAllProducts(products);
         setCategories(cats);
         setLoading(false);
@@ -63,6 +72,9 @@ export default function ProductListPage() {
         setError("商品載入失敗，請稍後再試");
         setLoading(false);
       });
+    // 銷量統計獨立抓取，不阻塞商品列表本身的顯示——銷量資料晚一點到位也沒關係，
+    // 只有選「熱銷優先」排序時才會用到，先讓商品列表盡快顯示出來比較重要。
+    fetchSalesCountBySku().then(setSalesCount);
   }, []);
 
   // 切換分類或搜尋字時，重新從頭顯示，不延續上一個分類的「已顯示數量」
@@ -86,7 +98,7 @@ export default function ProductListPage() {
         );
       })
     : filterProductsByCategory(allProducts, activeCategory);
-  const filteredProducts = sortProducts(baseFiltered, sortBy);
+  const filteredProducts = sortProducts(baseFiltered, sortBy, salesCount);
 
   const visibleProducts = filteredProducts.slice(0, visibleCount);
   const hasMore = visibleCount < filteredProducts.length;
