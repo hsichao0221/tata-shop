@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { fetchAllProducts, fetchCategories, filterProductsByCategory } from "../supabase.js";
+import { fetchAllProducts, fetchCategories, filterProductsByCategory, filterActiveProducts } from "../supabase.js";
 import ProductCard from "../components/ProductCard.jsx";
 import CategoryNav from "../components/CategoryNav.jsx";
 
@@ -65,19 +65,32 @@ export default function ProductListPage() {
       });
   }, []);
 
-  // 切換分類時，重新從頭顯示，不延續上一個分類的「已顯示數量」
+  // 切換分類或搜尋字時，重新從頭顯示，不延續上一個分類的「已顯示數量」
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
-  }, [categoryId]);
+  }, [categoryId, searchParams.get("q")]);
 
   // 依網址上的 category 參數，找到對應的分類定義；找不到就視為「全部」，
   // filterProductsByCategory 在找不到分類定義時本身也有 fallback 回傳全部上架商品，雙重保險
   const activeCategory = categories.find((c) => c.id === categoryId);
-  const filteredProducts = sortProducts(filterProductsByCategory(allProducts, activeCategory), sortBy);
+  const searchQuery = (searchParams.get("q") || "").trim();
+  // 有搜尋字的話，用商品名稱/貨號模糊比對(不分大小寫)，取代原本的分類篩選；
+  // 沒有搜尋字才照原本邏輯依分類篩選。搜尋結果一樣會套用缺貨排最後等排序規則。
+  const baseFiltered = searchQuery
+    ? filterActiveProducts(allProducts).filter((p) => {
+        const kw = searchQuery.toLowerCase();
+        return (
+          (p.name || "").toLowerCase().includes(kw) ||
+          (p.sku || "").toLowerCase().includes(kw) ||
+          (p.variants || []).some((v) => (v.sku || "").toLowerCase().includes(kw))
+        );
+      })
+    : filterProductsByCategory(allProducts, activeCategory);
+  const filteredProducts = sortProducts(baseFiltered, sortBy);
 
   const visibleProducts = filteredProducts.slice(0, visibleCount);
   const hasMore = visibleCount < filteredProducts.length;
-  const pageTitle = activeCategory?.label || "所有商品";
+  const pageTitle = searchQuery ? `搜尋「${searchQuery}」的結果` : (activeCategory?.label || "所有商品");
 
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 16px 60px", display: "flex", gap: 24 }}>
