@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { CartProvider, useCart } from "./CartContext.jsx";
 import { AuthProvider, useAuth } from "./AuthContext.jsx";
@@ -23,7 +23,18 @@ import UpdatePasswordPage from "./pages/UpdatePasswordPage.jsx";
 function NavBar() {
   const { totalQty } = useCart();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchInput, setSearchInput] = useState("");
+  function submitSearch(e) {
+    e.preventDefault();
+    const q = searchInput.trim();
+    if (!q) return;
+    navigate(`/products?q=${encodeURIComponent(q)}`);
+    setSearchOpen(false);
+    setMobileOpen(false);
+  }
   return (
     <nav
       style={{
@@ -58,6 +69,26 @@ function NavBar() {
         </div>
         <div className="navbar-desktop-items" style={{ display: "flex", alignItems: "center", gap: 20 }}>
           <MenuNav />
+          {searchOpen ? (
+            <form onSubmit={submitSearch} style={{ display: "flex", alignItems: "center" }}>
+              <input
+                autoFocus
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onBlur={() => !searchInput && setSearchOpen(false)}
+                placeholder="搜尋商品名稱或貨號"
+                style={{ border: "1px solid #ddd", borderRadius: 20, padding: "6px 14px", fontSize: 13, width: 180, outline: "none" }}
+              />
+            </form>
+          ) : (
+            <button
+              onClick={() => setSearchOpen(true)}
+              aria-label="搜尋商品"
+              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, padding: 0 }}
+            >
+              🔍
+            </button>
+          )}
           <Link to={user ? "/account" : "/login"} style={{ textDecoration: "none", color: "#222", fontSize: 14 }}>
             {user ? "我的帳戶" : "登入"}
           </Link>
@@ -90,6 +121,14 @@ function NavBar() {
           className="navbar-mobile-panel"
           style={{ borderTop: "1px solid #f0f0f0", padding: "12px 20px", display: "flex", flexDirection: "column", gap: 14 }}
         >
+          <form onSubmit={submitSearch} style={{ display: "flex" }}>
+            <input
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="搜尋商品名稱或貨號"
+              style={{ flex: 1, border: "1px solid #ddd", borderRadius: 20, padding: "8px 14px", fontSize: 14, outline: "none" }}
+            />
+          </form>
           <MenuNav vertical />
           <Link
             to={user ? "/account" : "/login"}
