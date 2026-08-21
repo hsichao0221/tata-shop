@@ -23,6 +23,83 @@ async function loadEcpayConfig() {
   }
 }
 
+// 官網賣出商品時，扣減真實庫存(pos_inventory_stock)。
+// 一定會扣官網(web)自己的庫存；如果後台「總倉庫存同步設定」(hqSyncEnabled)是開啟的，
+// 同時也扣總倉(hq)的庫存，讓總倉的數字能反映「這批貨已經被賣掉」，不是只有增加、沒有減少。
+// 任何一個貨號扣庫存失敗都只記錄log，不會讓整個付款流程失敗(訂單本身已經成立，庫存問題事後可以用「手動校正」補救)。
+async function deductInventoryForOrder(items, orderId) {
+  const hdrs = {
+    "apikey": SUPABASE_ANON_KEY,
+    "Authorization": "Bearer " + SUPABASE_ANON_KEY,
+    "Content-Type": "application/json",
+    "Prefer": "resolution=merge-duplicates",
+  };
+
+  let hqSyncEnabled = false;
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/erp_settings?key=eq.hqSyncEnabled&select=value`, { headers: hdrs });
+    const d = r.ok ? await r.json() : [];
+    hqSyncEnabled = !!d?.[0]?.value;
+  } catch (e) {
+    console.warn("讀取總倉庫存同步設定失敗，預設不同步:", e);
+  }
+
+  for (const item of items) {
+    if (!item.sku || !item.qty) continue;
+    // 扣官網庫存
+    try {
+      const curRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/pos_inventory_stock?sku=eq.${encodeURIComponent(item.sku)}&store_id=eq.web&select=qty`,
+        { headers: hdrs }
+      );
+      const curRows = curRes.ok ? await curRes.json() : [];
+      const curQty = curRows?.[0]?.qty || 0;
+      await fetch(`${SUPABASE_URL}/rest/v1/pos_inventory_stock?on_conflict=sku,store_id`, {
+        method: "POST",
+        headers: hdrs,
+        body: JSON.stringify({
+          sku: item.sku, store_id: "web", store_name: "TATA 官網",
+          qty: Math.max(0, curQty - item.qty), product_name: item.name || "",
+          updated_at: new Date().toISOString(),
+        }),
+      });
+      await fetch(`${SUPABASE_URL}/rest/v1/pos_stock_logs`, {
+        method: "POST", headers: hdrs,
+        body: JSON.stringify({ store_id: "web", sku: item.sku, type: "web_sale", qty_change: -item.qty, ref_id: orderId, created_at: new Date().toISOString() }),
+      });
+    } catch (e) {
+      console.warn("扣減官網庫存失敗:", item.sku, e);
+    }
+
+    // 如果開啟總倉同步，一併扣總倉庫存
+    if (hqSyncEnabled) {
+      try {
+        const curHqRes = await fetch(
+          `${SUPABASE_URL}/rest/v1/pos_inventory_stock?sku=eq.${encodeURIComponent(item.sku)}&store_id=eq.hq&select=qty`,
+          { headers: hdrs }
+        );
+        const curHqRows = curHqRes.ok ? await curHqRes.json() : [];
+        const curHqQty = curHqRows?.[0]?.qty || 0;
+        await fetch(`${SUPABASE_URL}/rest/v1/pos_inventory_stock?on_conflict=sku,store_id`, {
+          method: "POST",
+          headers: hdrs,
+          body: JSON.stringify({
+            sku: item.sku, store_id: "hq", store_name: "中央倉",
+            qty: Math.max(0, curHqQty - item.qty), product_name: item.name || "",
+            updated_at: new Date().toISOString(),
+          }),
+        });
+        await fetch(`${SUPABASE_URL}/rest/v1/pos_stock_logs`, {
+          method: "POST", headers: hdrs,
+          body: JSON.stringify({ store_id: "hq", sku: item.sku, type: "web_sale_sync", qty_change: -item.qty, ref_id: orderId, created_at: new Date().toISOString() }),
+        });
+      } catch (e) {
+        console.warn("同步扣減總倉庫存失敗:", item.sku, e);
+      }
+    }
+  }
+}
+
 export default async function handler(req, res) {
   // ECPay 是用 server-to-server 的方式 POST 通知付款結果，
   // 不管驗證成功或失敗，HTTP status 都必須回 200，
@@ -58,6 +135,17 @@ export default async function handler(req, res) {
     // 付款成功，把之前在 ecpay-checkout 階段已寫入的 pending 訂單，更新成正式的 sale 狀態，
     // 這樣 ERP 那邊的所有銷售分析功能，就會自動把這筆訂單納入計算，不需要額外修改 ERP 任何程式碼。
     try {
+      // 先查詢這筆訂單目前的狀態跟商品明細。ECPay官方協定會在沒收到200回應時持續重試通知，
+      // 所以同一筆訂單有可能收到不只一次「付款成功」通知——一定要先確認「目前還是pending」
+      // 才能扣庫存，避免同一筆訂單被重複扣兩次庫存(這是防重複扣款的關鍵保護)。
+      const orderRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/pos_orders?id=eq.${data.MerchantTradeNo}&select=type,items`,
+        { headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": "Bearer " + SUPABASE_ANON_KEY } }
+      );
+      const orderRows = orderRes.ok ? await orderRes.json() : [];
+      const order = orderRows?.[0];
+      const isFirstTimeConfirm = order && order.type === "pending";
+
       const updateRes = await fetch(
         `${SUPABASE_URL}/rest/v1/pos_orders?id=eq.${data.MerchantTradeNo}`,
         {
@@ -77,6 +165,12 @@ export default async function handler(req, res) {
         console.error("更新訂單狀態失敗:", data.MerchantTradeNo, await updateRes.text());
       } else {
         console.log("ECPay 付款成功，訂單已更新:", data.MerchantTradeNo, data.TradeAmt);
+      }
+
+      // 只有「第一次」從pending確認成sale，才扣庫存；如果是ECPay重複通知(訂單已經是sale了)，
+      // 這裡就跳過，不會重複扣。
+      if (isFirstTimeConfirm && Array.isArray(order.items) && order.items.length > 0) {
+        await deductInventoryForOrder(order.items, data.MerchantTradeNo);
       }
     } catch (e) {
       console.error("更新訂單狀態時發生錯誤:", e);
