@@ -25,6 +25,33 @@ async function loadSetting(key) {
   }
 }
 
+// 統計「熱銷排序」用的銷量資料：只抓最近90天內的已成交訂單(type=sale)，
+// 加總每個貨號賣出的件數。限制在90天內是為了避免訂單累積越來越多後，
+// 每次都要抓全部歷史訂單拖慢商品列表頁的載入速度；「熱銷」本來意義上
+// 也應該反映「最近」的熱銷程度，而不是把很久以前的銷量也算進去。
+export async function fetchSalesCountBySku() {
+  try {
+    const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/pos_orders?type=eq.sale&date=gte.${ninetyDaysAgo}&select=items&limit=5000`,
+      { headers: HEADERS }
+    );
+    if (!r.ok) return {};
+    const orders = await r.json();
+    const counts = {};
+    orders.forEach((o) => {
+      (o.items || []).forEach((it) => {
+        if (!it.sku) return;
+        counts[it.sku] = (counts[it.sku] || 0) + (Number(it.qty) || 0);
+      });
+    });
+    return counts;
+  } catch (e) {
+    console.warn("讀取銷量統計失敗:", e);
+    return {};
+  }
+}
+
 // 讀取完整商品清單（商品資料分批存在 products_0, products_1... 這幾個 key，
 // 這裡負責把它們依序讀出來拼成一個完整陣列）
 export async function fetchAllProducts() {
