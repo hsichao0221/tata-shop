@@ -40,6 +40,10 @@ export default function ProductListPage() {
   useEffect(() => {
     Promise.all([fetchAllProducts(), fetchCategories()])
       .then(([products, cats]) => {
+        // 暫時偵錯用：確認商品資料到底有沒有抓到、篩選前後數量對不對，
+        // 排查完「官網看不到新商品」這個問題後會移除
+        console.log("[偵錯] 原始商品總數:", products.length);
+        console.log("[偵錯] 有沒有T2F-S10036系列:", products.filter(p=>(p.sku||"").includes("T2F-S10036")||(p.name||"").includes("T2F-S10036")));
         setAllProducts(products);
         setCategories(cats);
         setLoading(false);
