@@ -7,11 +7,18 @@ import CategoryNav from "../components/CategoryNav.jsx";
 const PAGE_SIZE = 30;
 
 const SORT_OPTIONS = [
-  { value: "default", label: "預設排序" },
   { value: "newest", label: "最新上架" },
+  { value: "default", label: "商品原始順序" },
   { value: "price_asc", label: "價格低到高" },
   { value: "price_desc", label: "價格高到低" },
 ];
+
+// 判斷商品是否還有庫存：任何一個款式還有庫存(qty>0且沒被標記斷貨)，就算是有庫存。
+// 沒有任何款式資料的商品(舊資料/單一商品無款式)，預設視為有庫存，避免誤判成缺貨。
+function isInStock(product) {
+  if (!Array.isArray(product.variants) || product.variants.length === 0) return true;
+  return product.variants.some((v) => !v.discontinued && Number(v.qty) > 0);
+}
 
 // 排序函式：newest 用 createdAt(沒有的舊商品視為最舊，排在最後面，不會出錯或消失)
 function sortProducts(products, sortBy) {
@@ -23,6 +30,9 @@ function sortProducts(products, sortBy) {
   } else if (sortBy === "price_desc") {
     list.sort((a, b) => (b.salePrice ?? b.price ?? 0) - (a.salePrice ?? a.price ?? 0));
   }
+  // 缺貨商品一律排到最後，不管顧客選的是哪一種排序方式，這一層都會套用在最上面，
+  // 避免顧客點進一堆缺貨商品覺得沒東西可買，把還有貨的商品優先呈現出來
+  list.sort((a, b) => (isInStock(a) === isInStock(b) ? 0 : isInStock(a) ? -1 : 1));
   return list;
 }
 
@@ -35,7 +45,7 @@ export default function ProductListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  const [sortBy, setSortBy] = useState("default");
+  const [sortBy, setSortBy] = useState("newest");
 
   useEffect(() => {
     Promise.all([fetchAllProducts(), fetchCategories()])
