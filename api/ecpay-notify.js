@@ -54,12 +54,15 @@ async function deductInventoryForOrder(items, orderId) {
       );
       const curRows = curRes.ok ? await curRes.json() : [];
       const curQty = curRows?.[0]?.qty || 0;
+      // 這裡刻意不強制下限在0：允許缺貨時仍能結帳銷售，讓庫存可以正確扣成負數，
+      // 等之後進貨點收新貨入庫時，會自動用新進的量去相抵扣掉這筆負數欠帳，回到正確的庫存數字。
+      const newQty = curQty - item.qty;
       await fetch(`${SUPABASE_URL}/rest/v1/pos_inventory_stock?on_conflict=sku,store_id`, {
         method: "POST",
         headers: hdrs,
         body: JSON.stringify({
           sku: item.sku, store_id: "web", store_name: "TATA 官網",
-          qty: Math.max(0, curQty - item.qty), product_name: item.name || "",
+          qty: newQty, product_name: item.name || "",
           updated_at: new Date().toISOString(),
         }),
       });
@@ -80,12 +83,13 @@ async function deductInventoryForOrder(items, orderId) {
         );
         const curHqRows = curHqRes.ok ? await curHqRes.json() : [];
         const curHqQty = curHqRows?.[0]?.qty || 0;
+        const newHqQty = curHqQty - item.qty;
         await fetch(`${SUPABASE_URL}/rest/v1/pos_inventory_stock?on_conflict=sku,store_id`, {
           method: "POST",
           headers: hdrs,
           body: JSON.stringify({
             sku: item.sku, store_id: "hq", store_name: "中央倉",
-            qty: Math.max(0, curHqQty - item.qty), product_name: item.name || "",
+            qty: newHqQty, product_name: item.name || "",
             updated_at: new Date().toISOString(),
           }),
         });
