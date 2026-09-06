@@ -43,6 +43,7 @@ export default async function handler(req, res) {
       facebook: { enabled: !!data.external_facebook_enabled, hasClientId: !!data.external_facebook_client_id },
       google: { enabled: !!data.external_google_enabled, hasClientId: !!data.external_google_client_id },
       smtp: { enabled: !!data.smtp_host, host: data.smtp_host || "" },
+      siteUrl: data.site_url || "",
     });
   } catch (e) {
     console.error("supabase-oauth-status error:", e);
