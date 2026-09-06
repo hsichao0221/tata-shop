@@ -197,7 +197,11 @@ export default function CheckoutPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          items: items.map((i) => ({ name: i.name, qty: i.qty })),
+          // 修正：原本只存name跟qty，導致訂單明細完全沒有款號/圖片/規格/單價這些資訊，
+          // 客人在「我的帳戶」查看訂單時只看得到商品名稱，沒有圖片也不知道買的是哪個規格。
+          // 這些欄位在購物車items裡本來就有(CartContext.jsx的addItem已經存了)，只是結帳
+          // 送出時被丟掉，現在完整保留下來。
+          items: items.map((i) => ({ name: i.name, sku: i.sku, variant: i.variantName, qty: i.qty, price: i.price, image: i.image })),
           totalAmount: totalPrice,
           shippingFee,
           orderId,
