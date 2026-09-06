@@ -50,7 +50,11 @@ export default async function handler(req, res) {
         site_url: cleanUrl,
         // 同時把這個網址(含常見的auth相關路徑)加進允許清單，避免之後某些驗證流程的
         // redirect_to被擋下來；重設密碼會用到 /update-password 這個路徑(對應AuthContext.jsx)
-        uri_allow_list: `${cleanUrl},${cleanUrl}/*`,
+        // 用雙星號(**)而不是單一星號(*)：Supabase文件明確說明單星號只比對「一層路徑」，
+        // 雙星號才能比對任何深度的路徑(例如/account、/update-password這種帶路徑的網址)。
+        // 之前用單星號時，這些指定的導向路徑都不在允許清單裡，導致Supabase直接放棄
+        // 我們指定的導向網址、悄悄退回用預設的Site URL(這就是信件連結一直跳回首頁的原因)。
+        uri_allow_list: `${cleanUrl},${cleanUrl}/**`,
       }),
     });
     const data = await supaRes.json().catch(() => ({}));
