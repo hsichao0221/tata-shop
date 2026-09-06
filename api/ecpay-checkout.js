@@ -157,6 +157,38 @@ export default async function handler(req, res) {
       console.warn("寫入待付款訂單失敗:", e);
     }
 
+    // 補齊會員電話 + 偵測跨系統(官網/POS)疑似重複會員。這整段完全獨立、失敗也絕對不會
+    // 影響結帳流程(結帳是正式營運中最重要的路徑，任何新增邏輯都不能有機會擋住顧客付款)。
+    // 只有電話號碼精確相符時才自動判定為同一人，做法是：
+    // 1. 幫這個官網會員補上電話(如果原本是空的，例如第一次結帳前只有Email)
+    // 2. 檢查有沒有另一筆(例如POS建立的)會員資料電話完全相同，有的話記錄一筆待審核的
+    //    合併候選，不會自動合併金額/購物金這些敏感資料，需要在ERP後台人工確認才會執行
+    if (memberId && customerPhone && customerPhone.trim()) {
+      try {
+        await fetch(`${SUPABASE_URL}/rest/v1/pos_members?id=eq.${encodeURIComponent(memberId)}&phone=is.null`, {
+          method: "PATCH",
+          headers: {
+            "apikey": SUPABASE_ANON_KEY,
+            "Authorization": "Bearer " + SUPABASE_ANON_KEY,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ phone: customerPhone.trim() }),
+        });
+
+        await fetch(`${SUPABASE_URL}/rest/v1/rpc/flag_potential_duplicate`, {
+          method: "POST",
+          headers: {
+            "apikey": SUPABASE_ANON_KEY,
+            "Authorization": "Bearer " + SUPABASE_ANON_KEY,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ p_member_id: memberId, p_phone: customerPhone.trim() }),
+        });
+      } catch (e) {
+        console.warn("補齊電話/偵測疑似重複會員失敗(不影響結帳):", e);
+      }
+    }
+
     // 商品名稱用 # 分隔（ECPay 規定的多商品顯示格式）
     const itemName = items.map((i) => `${i.name} x${i.qty}`).join("#");
 
