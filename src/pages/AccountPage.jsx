@@ -424,7 +424,19 @@ function WishlistTab({ member }) {
   );
 }
 
+const payMethodLabel = { credit: "信用卡" };
+const orderStatusLabel = {
+  sale: { text: "已完成付款", color: "#27ae60" },
+  pending: { text: "待付款", color: "#e67e22" },
+  shipped: { text: "已出貨", color: "#2980b9" },
+  delivered: { text: "已送達", color: "#27ae60" },
+  cancelled: { text: "已取消", color: "#999" },
+  return: { text: "退貨", color: "#c0392b" },
+};
+
 function OrdersTab({ orders, loading }) {
+  const [expanded, setExpanded] = useState(null); // 目前展開明細的訂單id
+
   return (
     <div>
       {loading && <div style={{ textAlign: "center", padding: 40, color: "#999" }}>載入中...</div>}
@@ -432,23 +444,94 @@ function OrdersTab({ orders, loading }) {
         <div style={{ textAlign: "center", padding: 40, color: "#999" }}>目前還沒有訂單紀錄</div>
       )}
       {!loading &&
-        orders.map((o) => (
-          <div key={o.id} style={{ border: "1px solid #eee", borderRadius: 8, padding: "14px 16px", marginBottom: 12 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-              <span style={{ fontFamily: "monospace", fontSize: 13, color: "#666" }}>{o.id}</span>
-              <span style={{ fontSize: 12, fontWeight: 700, color: o.type === "sale" ? "#27ae60" : o.type === "pending" ? "#e67e22" : "#999" }}>
-                {o.type === "sale" ? "已完成付款" : o.type === "pending" ? "待付款" : o.type}
-              </span>
-            </div>
-            <div style={{ color: "#999", fontSize: 12, marginBottom: 8 }}>{o.date} {o.time}</div>
-            {(o.items || []).map((item, i) => (
-              <div key={i} style={{ fontSize: 13, color: "#444" }}>
-                {item.name} {item.variant && `（${item.variant}）`} x{item.qty}
+        orders.map((o) => {
+          const status = orderStatusLabel[o.order_status] || orderStatusLabel[o.type] || { text: o.type, color: "#999" };
+          const isOpen = expanded === o.id;
+          return (
+            <div key={o.id} style={{ border: "1px solid #eee", borderRadius: 8, marginBottom: 12, overflow: "hidden" }}>
+              <div
+                onClick={() => setExpanded(isOpen ? null : o.id)}
+                style={{ padding: "14px 16px", cursor: "pointer" }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                  <span style={{ fontFamily: "monospace", fontSize: 13, color: "#666" }}>{o.id}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: status.color }}>{status.text}</span>
+                </div>
+                <div style={{ color: "#999", fontSize: 12, marginBottom: 10 }}>{o.date} {o.time}</div>
+
+                {/* 商品縮圖列(摘要用，不管展開與否都顯示，讓客人一眼認出這筆訂單買了什麼) */}
+                <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                  {(o.items || []).slice(0, 4).map((item, i) => (
+                    <div key={i} style={{ width: 48, height: 48, borderRadius: 6, overflow: "hidden", background: "#f5f5f5", flexShrink: 0 }}>
+                      {item.image ? (
+                        <img src={item.image} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      ) : (
+                        <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#ccc", fontSize: 9 }}>無圖片</div>
+                      )}
+                    </div>
+                  ))}
+                  {(o.items || []).length > 4 && (
+                    <div style={{ width: 48, height: 48, borderRadius: 6, background: "#f0f0f0", display: "flex", alignItems: "center", justifyContent: "center", color: "#999", fontSize: 12, flexShrink: 0 }}>
+                      +{o.items.length - 4}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 12, color: "#999" }}>共 {(o.items || []).reduce((s, i) => s + (i.qty || 0), 0)} 件商品</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontWeight: 700 }}>NT${o.total}</span>
+                    <span style={{ fontSize: 11, color: "#999" }}>{isOpen ? "收合 ▲" : "查看明細 ▼"}</span>
+                  </div>
+                </div>
               </div>
-            ))}
-            <div style={{ textAlign: "right", fontWeight: 700, marginTop: 8 }}>NT${o.total}</div>
-          </div>
-        ))}
+
+              {isOpen && (
+                <div style={{ borderTop: "1px solid #f0f0f0", padding: "16px", background: "#fafafa" }}>
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#666", marginBottom: 10 }}>商品明細</div>
+                    {(o.items || []).map((item, i) => (
+                      <div key={i} style={{ display: "flex", gap: 12, marginBottom: 10, alignItems: "center" }}>
+                        <div style={{ width: 56, height: 56, borderRadius: 6, overflow: "hidden", background: "#f5f5f5", flexShrink: 0 }}>
+                          {item.image ? (
+                            <img src={item.image} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          ) : (
+                            <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#ccc", fontSize: 9 }}>無圖片</div>
+                          )}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, color: "#333" }}>{item.name}</div>
+                          {item.variant && <div style={{ fontSize: 11, color: "#999", marginTop: 2 }}>規格：{item.variant}</div>}
+                          {item.sku && <div style={{ fontSize: 11, color: "#bbb", marginTop: 2 }}>貨號：{item.sku}</div>}
+                        </div>
+                        <div style={{ textAlign: "right", fontSize: 12, color: "#666" }}>
+                          <div>NT${item.price || 0} x {item.qty}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "#666", paddingTop: 10, borderTop: "1px dashed #ddd" }}>
+                    {o.subtotal != null && (
+                      <div style={{ display: "flex", justifyContent: "space-between" }}><span>小計</span><span>NT${o.subtotal}</span></div>
+                    )}
+                    {o.discount > 0 && (
+                      <div style={{ display: "flex", justifyContent: "space-between", color: "#c0392b" }}><span>折扣</span><span>-NT${o.discount}</span></div>
+                    )}
+                    <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: 14, color: "#222", marginTop: 4 }}><span>總計</span><span>NT${o.total}</span></div>
+                  </div>
+
+                  <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid #eee", display: "flex", flexDirection: "column", gap: 8, fontSize: 12, color: "#666" }}>
+                    <div><span style={{ color: "#999" }}>付款方式：</span>{payMethodLabel[o.pay_method] || o.pay_method || "－"}</div>
+                    <div><span style={{ color: "#999" }}>運送方式：</span>{o.ship_method || "－"}</div>
+                    <div><span style={{ color: "#999" }}>收件人：</span>{o.recipient_name || o.customer_phone ? `${o.recipient_name || ""} ${o.recipient_phone || o.customer_phone || ""}` : "－"}</div>
+                    <div><span style={{ color: "#999" }}>送貨地址：</span>{o.ship_address || "－"}</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
     </div>
   );
 }
