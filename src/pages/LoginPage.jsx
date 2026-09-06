@@ -4,7 +4,7 @@ import { useAuth } from "../AuthContext.jsx";
 import { fetchAuthSettings, checkEmailExists } from "../supabase.js";
 
 export default function LoginPage() {
-  const { user, signUpWithEmail, signInWithEmail, signInWithProvider } = useAuth();
+  const { user, signUpWithEmail, signInWithEmail, signInWithProvider, resendConfirmationEmail } = useAuth();
   const navigate = useNavigate();
 
   const [authSettings, setAuthSettings] = useState(null);
@@ -15,6 +15,9 @@ export default function LoginPage() {
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [signupNotice, setSignupNotice] = useState(null); // 註冊成功後的畫面內提示，取代alert
+  const [pendingEmail, setPendingEmail] = useState(""); // 記住剛註冊、還在等驗證的email，供「重新發送驗證信」使用
+  const [resending, setResending] = useState(false);
+  const [resendMsg, setResendMsg] = useState(null);
 
   useEffect(() => {
     fetchAuthSettings().then(setAuthSettings);
@@ -89,13 +92,30 @@ export default function LoginPage() {
       } else {
         // 用畫面內的提示區塊取代 alert()，避免在部分手機瀏覽器上彈窗顯示異常，
         // 也讓提示文字能持續顯示在畫面上，不會一閃而過讓人誤以為沒反應。
+        // 修正：原本這裡誤把「還沒登入(需要驗證)」當成「SMTP服務故障」來提示，
+        // 但這其實是正常的驗證流程，不代表系統有問題，改成正確的說明文字。
         setSignupNotice(
-          "帳號已建立成功。系統設定上需要 Email 驗證才能登入，但目前驗證信寄送服務尚在設定中，請聯絡客服協助開通帳號。"
+          "帳號已建立成功！我們已經寄出一封驗證信到你的信箱，請點擊信裡的連結完成驗證後即可登入。"
         );
+        setPendingEmail(email);
+        setResendMsg(null);
         setMode("login");
         setSubmitting(false);
       }
     }
+  }
+
+  async function handleResendConfirmation() {
+    if (!pendingEmail) return;
+    setResending(true);
+    setResendMsg(null);
+    const { error } = await resendConfirmationEmail(pendingEmail);
+    if (error) {
+      setResendMsg({ type: "error", text: "重新發送失敗：" + error.message });
+    } else {
+      setResendMsg({ type: "success", text: "已經重新寄出驗證信，請稍後查看信箱（含垃圾郵件匣）。" });
+    }
+    setResending(false);
   }
 
   async function handleProviderLogin(provider) {
@@ -177,6 +197,30 @@ export default function LoginPage() {
           }}
         >
           {signupNotice}
+          {pendingEmail && (
+            <div style={{ marginTop: 10 }}>
+              <button
+                onClick={handleResendConfirmation}
+                disabled={resending}
+                style={{
+                  background: "none",
+                  border: "1px solid #7a5c00",
+                  borderRadius: 5,
+                  padding: "5px 10px",
+                  fontSize: 12,
+                  color: "#7a5c00",
+                  cursor: resending ? "default" : "pointer",
+                }}
+              >
+                {resending ? "發送中..." : "沒收到信？重新發送驗證信"}
+              </button>
+              {resendMsg && (
+                <div style={{ marginTop: 6, fontSize: 12, color: resendMsg.type === "error" ? "#c0392b" : "#2e7d32" }}>
+                  {resendMsg.text}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
