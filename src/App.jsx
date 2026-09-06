@@ -89,11 +89,15 @@ function NavBar() {
               🔍
             </button>
           )}
+        </div>
+        {/* 登入/我的帳戶跟購物車放在同一組(靠最右邊)：這兩個都是「跟我的帳戶/交易相關」的功能，
+            放在一起比較符合邏輯，之前登入被跟選單/搜尋這種「瀏覽相關」功能放在一起，會讓人覺得
+            登入跟購物車距離太遠、位置很奇怪 */}
+        <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
           <Link to={user ? "/account" : "/login"} style={{ textDecoration: "none", color: "#222", fontSize: 14 }}>
             {user ? "我的帳戶" : "登入"}
           </Link>
-        </div>
-        <Link to="/cart" style={{ textDecoration: "none", color: "#222", fontSize: 14, position: "relative" }}>
+          <Link to="/cart" style={{ textDecoration: "none", color: "#222", fontSize: 14, position: "relative" }}>
           🛒 購物車
           {totalQty > 0 && (
             <span
@@ -112,7 +116,8 @@ function NavBar() {
               {totalQty}
             </span>
           )}
-        </Link>
+          </Link>
+        </div>
       </div>
 
       {/* 手機版：點漢堡按鈕後展開的選單面板，垂直排列不會擠在一起 */}
@@ -130,13 +135,6 @@ function NavBar() {
             />
           </form>
           <MenuNav vertical />
-          <Link
-            to={user ? "/account" : "/login"}
-            onClick={() => setMobileOpen(false)}
-            style={{ textDecoration: "none", color: "#222", fontSize: 14 }}
-          >
-            {user ? "我的帳戶" : "登入"}
-          </Link>
         </div>
       )}
 
