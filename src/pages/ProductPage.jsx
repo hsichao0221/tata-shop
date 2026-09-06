@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { fetchAllProducts } from "../supabase.js";
+import { fetchAllProducts, SUPABASE_URL, SUPABASE_ANON_KEY } from "../supabase.js";
 import { useCart } from "../CartContext.jsx";
+import { useAuth } from "../AuthContext.jsx";
 
 // 依商品資料設定頁面SEO(title/description/keywords)。
 // 有填seoTitle/seoDescription/seoKeywords就用客戶自己填的，沒填就自動退回商品名稱/描述前150字，
@@ -35,11 +36,14 @@ function useProductSeo(product) {
 export default function ProductPage() {
   const { sku } = useParams();
   const { addItem } = useCart();
+  const { member } = useAuth();
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedVariant, setSelectedVariant] = useState(null);
   const [justAdded, setJustAdded] = useState(false);
   const [activeImg, setActiveImg] = useState(0);
+  const [wishlistId, setWishlistId] = useState(null); // null=不在追蹤清單裡；有值=該筆wishlist紀錄的id，用來取消追蹤
+  const [wishlistBusy, setWishlistBusy] = useState(false);
 
   useProductSeo(product);
 
@@ -54,6 +58,46 @@ export default function ProductPage() {
   useEffect(() => {
     setActiveImg(0);
   }, [sku]);
+
+  // 檢查這個商品目前是否已經在會員的追蹤清單裡，決定「加入追蹤」按鈕要顯示哪種狀態
+  useEffect(() => {
+    if (!member?.id || !sku) { setWishlistId(null); return; }
+    fetch(`${SUPABASE_URL}/rest/v1/member_wishlist?member_id=eq.${encodeURIComponent(member.id)}&product_sku=eq.${encodeURIComponent(sku)}&select=id`, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + SUPABASE_ANON_KEY },
+    })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => setWishlistId(Array.isArray(data) && data[0] ? data[0].id : null))
+      .catch(() => {});
+  }, [member?.id, sku]);
+
+  async function toggleWishlist() {
+    if (!member?.id) {
+      alert("請先登入會員才能使用追蹤清單");
+      return;
+    }
+    setWishlistBusy(true);
+    try {
+      if (wishlistId) {
+        // 已經在清單裡，這次點擊是取消追蹤
+        await fetch(`${SUPABASE_URL}/rest/v1/member_wishlist?id=eq.${encodeURIComponent(wishlistId)}`, {
+          method: "DELETE",
+          headers: { apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + SUPABASE_ANON_KEY },
+        });
+        setWishlistId(null);
+      } else {
+        const id = "WISH-" + Date.now();
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/member_wishlist`, {
+          method: "POST",
+          headers: { apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + SUPABASE_ANON_KEY, "Content-Type": "application/json" },
+          body: JSON.stringify({ id, member_id: member.id, product_sku: sku }),
+        });
+        if (res.ok) setWishlistId(id);
+      }
+    } catch (e) {
+      console.warn("追蹤清單操作失敗:", e);
+    }
+    setWishlistBusy(false);
+  }
 
   function handleAddToCart() {
     if (!product) return;
@@ -201,29 +245,48 @@ export default function ProductPage() {
             </div>
           )}
 
-          <button
-            disabled={(variants.length > 0 && !selectedVariant) || justAdded}
-            onClick={handleAddToCart}
-            style={{
-              width: "100%",
-              padding: "14px 0",
-              background: justAdded
-                ? "#27ae60"
-                : variants.length > 0 && !selectedVariant
-                ? "#ddd"
-                : "#222",
-              color: "#fff",
-              border: "none",
-              borderRadius: 6,
-              fontSize: 15,
-              fontWeight: 700,
-              cursor:
-                variants.length > 0 && !selectedVariant ? "not-allowed" : "pointer",
-              transition: "background 0.2s",
-            }}
-          >
-            {justAdded ? "✓ 已加入購物車" : "加入購物車"}
-          </button>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button
+              disabled={(variants.length > 0 && !selectedVariant) || justAdded}
+              onClick={handleAddToCart}
+              style={{
+                flex: 1,
+                padding: "14px 0",
+                background: justAdded
+                  ? "#27ae60"
+                  : variants.length > 0 && !selectedVariant
+                  ? "#ddd"
+                  : "#222",
+                color: "#fff",
+                border: "none",
+                borderRadius: 6,
+                fontSize: 15,
+                fontWeight: 700,
+                cursor:
+                  variants.length > 0 && !selectedVariant ? "not-allowed" : "pointer",
+                transition: "background 0.2s",
+              }}
+            >
+              {justAdded ? "✓ 已加入購物車" : "加入購物車"}
+            </button>
+            <button
+              onClick={toggleWishlist}
+              disabled={wishlistBusy}
+              title={wishlistId ? "取消追蹤" : "加入追蹤清單"}
+              style={{
+                width: 52,
+                padding: "14px 0",
+                background: "#fff",
+                border: `1px solid ${wishlistId ? "#c0392b" : "#ddd"}`,
+                borderRadius: 6,
+                fontSize: 18,
+                cursor: wishlistBusy ? "default" : "pointer",
+                color: wishlistId ? "#c0392b" : "#999",
+              }}
+            >
+              {wishlistId ? "♥" : "♡"}
+            </button>
+          </div>
 
           {availableVariants.length === 0 && variants.length > 0 && (
             <div style={{ color: "#c0392b", fontSize: 12, marginTop: 8, textAlign: "center" }}>
