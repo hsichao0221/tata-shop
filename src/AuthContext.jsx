@@ -82,7 +82,13 @@ export function AuthProvider({ children }) {
   }, []);
 
   async function signUpWithEmail(email, password) {
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    // 加上emailRedirectTo，讓驗證信裡的連結點擊後直接導到「我的帳戶」，
+    // 不是Supabase預設會導去的網站首頁(Site URL)，減少客人還要自己再點一次「帳戶」的多餘步驟
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo: `${window.location.origin}/account` },
+    });
     // 如果 Supabase 後台「Confirm email」是開啟的，data.session 會是 null，
     // 代表顧客註冊後還需要去信箱點確認連結才能登入；
     // 如果是關閉的，data.session 會直接有值，代表已經自動完成登入。
@@ -125,7 +131,11 @@ export function AuthProvider({ children }) {
   async function updateEmail(newEmail) {
     // 更新登入信箱。Supabase預設需要顧客去新(及/或舊)信箱點確認連結才會真正生效，
     // 呼叫成功不代表已經改好了，只代表確認信已經發送。
-    const { error } = await supabase.auth.updateUser({ email: newEmail });
+    // 同樣加上emailRedirectTo，確認完成後直接導到「我的帳戶」，不是網站首頁。
+    const { error } = await supabase.auth.updateUser(
+      { email: newEmail },
+      { emailRedirectTo: `${window.location.origin}/account` }
+    );
     if (!error && member?.id) {
       // 同步更新pos_members.email，避免CRM這邊的email紀錄跟登入帳號不一致。
       // 這裡選擇「送出當下就同步」而不是等確認完成才同步，是因為Supabase沒有現成的
