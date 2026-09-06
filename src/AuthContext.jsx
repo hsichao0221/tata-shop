@@ -95,6 +95,14 @@ export function AuthProvider({ children }) {
     return { error };
   }
 
+  async function resendConfirmationEmail(email) {
+    // 重新寄送註冊驗證信，用於顧客沒收到信、或信件過期時。
+    // 用Supabase Auth內建的resend方法，type設為"signup"對應到「重新確認註冊」這個情境
+    // (跟忘記密碼信是不同的信件模板)。
+    const { error } = await supabase.auth.resend({ type: "signup", email });
+    return { error };
+  }
+
   async function resetPasswordForEmail(email) {
     // 發送重設密碼信，顧客點信裡的連結後會被導到 redirectTo 這個網址，
     // 帶著一組臨時的驗證資訊，讓他在那個頁面輸入新密碼。
@@ -125,7 +133,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, member, loading, signUpWithEmail, signInWithEmail, signInWithProvider, signOut, resetPasswordForEmail, updatePassword }}
+      value={{ user, member, loading, signUpWithEmail, signInWithEmail, signInWithProvider, signOut, resetPasswordForEmail, updatePassword, resendConfirmationEmail }}
     >
       {children}
     </AuthContext.Provider>
