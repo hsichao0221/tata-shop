@@ -115,10 +115,62 @@ export function AuthProvider({ children }) {
   }
 
   async function updatePassword(newPassword) {
-    // 這個函式只能在顧客「已經透過重設密碼信的連結登入」之後呼叫，
-    // 因為 updateUser 要求使用者必須是已登入狀態
+    // 這個函式要求使用者必須是已登入狀態(updateUser的限制)，適用兩種情境：
+    // (1) 顧客透過忘記密碼信的連結登入後，在這裡設定新密碼
+    // (2) 已登入的顧客，在「我的帳戶」主動想更換密碼
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     return { error };
+  }
+
+  async function updateEmail(newEmail) {
+    // 更新登入信箱。Supabase預設需要顧客去新(及/或舊)信箱點確認連結才會真正生效，
+    // 呼叫成功不代表已經改好了，只代表確認信已經發送。
+    const { error } = await supabase.auth.updateUser({ email: newEmail });
+    if (!error && member?.id) {
+      // 同步更新pos_members.email，避免CRM這邊的email紀錄跟登入帳號不一致。
+      // 這裡選擇「送出當下就同步」而不是等確認完成才同步，是因為Supabase沒有現成的
+      // 「確認完成」callback可以掛，且CRM記錄「顧客表示要改成這個email」的即時性
+      // 比等待確認更重要；即使顧客最後沒有真的完成驗證，這只是輕微的資料落差，
+      // 遠比另一種做法(依賴linkOrCreateMember的email比對邏輯做同步)可能不小心
+      // 把顧客的total_spend/order_count覆蓋回0的風險小很多。
+      try {
+        await fetch(`${SUPABASE_URL}/rest/v1/pos_members?id=eq.${encodeURIComponent(member.id)}`, {
+          method: "PATCH",
+          headers: { apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + SUPABASE_ANON_KEY, "Content-Type": "application/json" },
+          body: JSON.stringify({ email: newEmail }),
+        });
+      } catch (e) {
+        console.warn("同步pos_members.email失敗(不影響email變更本身):", e);
+      }
+    }
+    return { error };
+  }
+
+  async function updateMemberProfile(fields) {
+    // 更新姓名/電話/生日/地址這些一般資料，跟登入帳號(email/password)無關，
+    // 直接寫入pos_members，不需要經過Supabase Auth。
+    if (!member?.id) return { error: { message: "尚未登入或找不到會員資料" } };
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/pos_members?id=eq.${encodeURIComponent(member.id)}`, {
+        method: "PATCH",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: "Bearer " + SUPABASE_ANON_KEY,
+          "Content-Type": "application/json",
+          Prefer: "return=representation",
+        },
+        body: JSON.stringify(fields),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        return { error: { message: data?.message || "更新失敗" } };
+      }
+      const updated = await res.json();
+      if (Array.isArray(updated) && updated[0]) setMember(updated[0]);
+      return { error: null };
+    } catch (e) {
+      return { error: { message: String(e) } };
+    }
   }
 
   async function signInWithProvider(provider) {
@@ -133,7 +185,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, member, loading, signUpWithEmail, signInWithEmail, signInWithProvider, signOut, resetPasswordForEmail, updatePassword, resendConfirmationEmail }}
+      value={{ user, member, loading, signUpWithEmail, signInWithEmail, signInWithProvider, signOut, resetPasswordForEmail, updatePassword, resendConfirmationEmail, updateEmail, updateMemberProfile }}
     >
       {children}
     </AuthContext.Provider>
