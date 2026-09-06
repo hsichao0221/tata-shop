@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Link, useNavigate } from "react-router-do
 import { useState } from "react";
 import { CartProvider, useCart } from "./CartContext.jsx";
 import { AuthProvider, useAuth } from "./AuthContext.jsx";
+import { LanguageProvider, useLanguage } from "./LanguageContext.jsx";
 import Footer from "./components/Footer.jsx";
 import MenuNav from "./components/MenuNav.jsx";
 import HomePage from "./pages/HomePage.jsx";
@@ -23,6 +24,7 @@ import UpdatePasswordPage from "./pages/UpdatePasswordPage.jsx";
 function NavBar() {
   const { totalQty } = useCart();
   const { user } = useAuth();
+  const { lang, setLang } = useLanguage();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -94,6 +96,12 @@ function NavBar() {
             放在一起比較符合邏輯，之前登入被跟選單/搜尋這種「瀏覽相關」功能放在一起，會讓人覺得
             登入跟購物車距離太遠、位置很奇怪 */}
         <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+          <button
+            onClick={() => setLang(lang === "en" ? "zh" : "en")}
+            style={{ background: "none", border: "1px solid #ddd", borderRadius: 14, padding: "3px 10px", fontSize: 12, cursor: "pointer", color: "#666" }}
+          >
+            {lang === "en" ? "中文" : "EN"}
+          </button>
           <Link to={user ? "/account" : "/login"} style={{ textDecoration: "none", color: "#222", fontSize: 14 }}>
             {user ? "我的帳戶" : "登入"}
           </Link>
@@ -135,6 +143,12 @@ function NavBar() {
             />
           </form>
           <MenuNav vertical />
+          <button
+            onClick={() => setLang(lang === "en" ? "zh" : "en")}
+            style={{ background: "none", border: "1px solid #ddd", borderRadius: 14, padding: "5px 12px", fontSize: 13, cursor: "pointer", color: "#666", alignSelf: "flex-start" }}
+          >
+            {lang === "en" ? "🌐 中文" : "🌐 EN"}
+          </button>
         </div>
       )}
 
@@ -150,26 +164,28 @@ function NavBar() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <CartProvider>
-        <BrowserRouter>
-          <NavBar />
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/pages/:slug" element={<DynamicPage />} />
-            <Route path="/products" element={<ProductListPage />} />
-            <Route path="/products/:sku" element={<ProductPage />} />
-            <Route path="/cart" element={<CartPage />} />
-            <Route path="/checkout" element={<CheckoutPage />} />
-            <Route path="/order-result" element={<OrderResultPage />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/account" element={<AccountPage />} />
-            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-            <Route path="/update-password" element={<UpdatePasswordPage />} />
-          </Routes>
-          <Footer />
-        </BrowserRouter>
-      </CartProvider>
-    </AuthProvider>
+    <LanguageProvider>
+      <AuthProvider>
+        <CartProvider>
+          <BrowserRouter>
+            <NavBar />
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/pages/:slug" element={<DynamicPage />} />
+              <Route path="/products" element={<ProductListPage />} />
+              <Route path="/products/:sku" element={<ProductPage />} />
+              <Route path="/cart" element={<CartPage />} />
+              <Route path="/checkout" element={<CheckoutPage />} />
+              <Route path="/order-result" element={<OrderResultPage />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/account" element={<AccountPage />} />
+              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/update-password" element={<UpdatePasswordPage />} />
+            </Routes>
+            <Footer />
+          </BrowserRouter>
+        </CartProvider>
+      </AuthProvider>
+    </LanguageProvider>
   );
 }
