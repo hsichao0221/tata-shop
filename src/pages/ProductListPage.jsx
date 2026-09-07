@@ -86,13 +86,16 @@ export default function ProductListPage() {
   // filterProductsByCategory 在找不到分類定義時本身也有 fallback 回傳全部上架商品，雙重保險
   const activeCategory = categories.find((c) => c.id === categoryId);
   const searchQuery = (searchParams.get("q") || "").trim();
-  // 有搜尋字的話，用商品名稱/貨號模糊比對(不分大小寫)，取代原本的分類篩選；
+  // 有搜尋字的話，用商品名稱(中英文都比對)/貨號模糊比對(不分大小寫)，取代原本的分類篩選；
   // 沒有搜尋字才照原本邏輯依分類篩選。搜尋結果一樣會套用缺貨排最後等排序規則。
+  // 名稱比對同時檢查中文name跟英文nameEn，不管客人習慣用哪種語言搜尋都能找到，
+  // 不限定要跟目前顯示語言一致(搜尋範圍越寬越容易找到商品)。
   const baseFiltered = searchQuery
     ? filterActiveProducts(allProducts).filter((p) => {
         const kw = searchQuery.toLowerCase();
         return (
           (p.name || "").toLowerCase().includes(kw) ||
+          (p.nameEn || "").toLowerCase().includes(kw) ||
           (p.sku || "").toLowerCase().includes(kw) ||
           (p.variants || []).some((v) => (v.sku || "").toLowerCase().includes(kw))
         );
