@@ -3,25 +3,33 @@ import { useParams, Link } from "react-router-dom";
 import { fetchAllProducts, SUPABASE_URL, SUPABASE_ANON_KEY } from "../supabase.js";
 import { useCart } from "../CartContext.jsx";
 import { useAuth } from "../AuthContext.jsx";
+import { useLocalizedField, useLanguage } from "../LanguageContext.jsx";
 
 // 依商品資料設定頁面SEO(title/description/keywords)。
 // 有填seoTitle/seoDescription/seoKeywords就用客戶自己填的，沒填就自動退回商品名稱/描述前150字，
 // 確保沒有特別去後台設定SEO的商品，頁面還是有基本的meta資訊，不會是空的。
+// 注意：seoTitle/seoDescription這兩個自訂覆寫欄位目前只有中文版，所以只在中文模式下套用；
+// 英文模式一律使用(已經依語言取好的)商品名稱/摘要，避免顯示錯誤語言的SEO資訊。
 function useProductSeo(product) {
+  const { lang } = useLanguage();
+  const localizedName = useLocalizedField(product, "name");
+  const localizedSummary = useLocalizedField(product, "summary");
+  const localizedDescription = useLocalizedField(product, "description");
+
   useEffect(() => {
     if (!product) return;
     const prevTitle = document.title;
-    const title = product.seoTitle || product.name;
+    const title = (lang === "zh" && product.seoTitle) || localizedName;
     document.title = title ? `${title} | TATA` : document.title;
 
-    const desc = product.seoDescription || product.summary || (product.description || "").slice(0, 150);
+    const desc = (lang === "zh" && (product.seoDescription || product.summary)) || localizedSummary || (localizedDescription || "").slice(0, 150);
     let metaDesc = document.querySelector('meta[name="description"]');
     if (!metaDesc) { metaDesc = document.createElement("meta"); metaDesc.setAttribute("name", "description"); document.head.appendChild(metaDesc); }
     const prevDesc = metaDesc.getAttribute("content");
     if (desc) metaDesc.setAttribute("content", desc);
 
     let metaKw = document.querySelector('meta[name="keywords"]');
-    if (product.seoKeywords) {
+    if (lang === "zh" && product.seoKeywords) {
       if (!metaKw) { metaKw = document.createElement("meta"); metaKw.setAttribute("name", "keywords"); document.head.appendChild(metaKw); }
       metaKw.setAttribute("content", product.seoKeywords);
     }
@@ -46,6 +54,9 @@ export default function ProductPage() {
   const [wishlistBusy, setWishlistBusy] = useState(false);
 
   useProductSeo(product);
+  const name = useLocalizedField(product, "name");
+  const summary = useLocalizedField(product, "summary");
+  const description = useLocalizedField(product, "description");
 
   useEffect(() => {
     fetchAllProducts().then((all) => {
@@ -152,7 +163,7 @@ export default function ProductPage() {
             {product.images?.[activeImg] ? (
               <img
                 src={product.images[activeImg]}
-                alt={(product.imageAlts && product.imageAlts[activeImg]) || product.name}
+                alt={(product.imageAlts && product.imageAlts[activeImg]) || name}
                 style={{ width: "100%", height: "100%", objectFit: "cover" }}
               />
             ) : (
@@ -174,7 +185,7 @@ export default function ProductPage() {
                 >
                   <img
                     src={img}
-                    alt={(product.imageAlts && product.imageAlts[i]) || `${product.name} ${i + 1}`}
+                    alt={(product.imageAlts && product.imageAlts[i]) || `${name} ${i + 1}`}
                     style={{ width: "100%", height: "100%", objectFit: "cover" }}
                   />
                 </button>
@@ -185,11 +196,11 @@ export default function ProductPage() {
 
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 700, margin: "0 0 4px" }}>
-            {product.name}
+            {name}
           </h1>
-          {product.summary && (
+          {summary && (
             <div style={{ color: "#666", fontSize: 13, marginBottom: 8, lineHeight: 1.5 }}>
-              {product.summary}
+              {summary}
             </div>
           )}
           <div style={{ color: "#999", fontSize: 12, marginBottom: 16 }}>
@@ -296,11 +307,11 @@ export default function ProductPage() {
         </div>
       </div>
 
-      {product.description && (
+      {description && (
         <div style={{ marginTop: 40, paddingTop: 24, borderTop: "1px solid #eee" }}>
           <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>商品描述</h2>
           <div style={{ color: "#444", fontSize: 14, lineHeight: 1.9 }}>
-            {product.description.split("\n").map((line, i) =>
+            {description.split("\n").map((line, i) =>
               line.trim() ? <p key={i} style={{ margin: "0 0 10px" }}>{line}</p> : <br key={i} />
             )}
           </div>
@@ -313,7 +324,7 @@ export default function ProductPage() {
             <img
               key={i}
               src={img}
-              alt={(product.moreImageAlts && product.moreImageAlts[i]) || `${product.name} 細節圖 ${i + 1}`}
+              alt={(product.moreImageAlts && product.moreImageAlts[i]) || `${name} 細節圖 ${i + 1}`}
               style={{ width: "100%", display: "block", marginBottom: 16, borderRadius: 4 }}
             />
           ))}
