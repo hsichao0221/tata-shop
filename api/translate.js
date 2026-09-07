@@ -19,7 +19,7 @@ function splitIntoChunks(text) {
   const chunks = [];
   let current = "";
   for (const s of sentences) {
-    if (Buffer.byteLength(current + s, "utf-8") > MAX_BYTES && current) {
+    if (new TextEncoder().encode(current + s).length > MAX_BYTES && current) {
       chunks.push(current);
       current = s;
     } else {
@@ -29,11 +29,11 @@ function splitIntoChunks(text) {
   if (current) chunks.push(current);
   // 如果單一句子本身就超過限制(極端狀況)，直接按字數硬切，避免整段翻譯失敗
   return chunks.flatMap((c) => {
-    if (Buffer.byteLength(c, "utf-8") <= MAX_BYTES) return [c];
+    if (new TextEncoder().encode(c).length <= MAX_BYTES) return [c];
     const pieces = [];
     let buf = "";
     for (const ch of c) {
-      if (Buffer.byteLength(buf + ch, "utf-8") > MAX_BYTES) { pieces.push(buf); buf = ch; }
+      if (new TextEncoder().encode(buf + ch).length > MAX_BYTES) { pieces.push(buf); buf = ch; }
       else buf += ch;
     }
     if (buf) pieces.push(buf);
