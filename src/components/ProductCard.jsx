@@ -1,6 +1,8 @@
 import { Link } from "react-router-dom";
+import { useLocalizedField } from "../LanguageContext.jsx";
 
 export default function ProductCard({ product }) {
+  const name = useLocalizedField(product, "name");
   return (
     <Link
       to={`/products/${product.sku}`}
@@ -28,7 +30,7 @@ export default function ProductCard({ product }) {
           {product.images?.[0] ? (
             <img
               src={product.images[0]}
-              alt={product.name}
+              alt={name}
               style={{ width: "100%", height: "100%", objectFit: "cover" }}
             />
           ) : (
@@ -44,7 +46,7 @@ export default function ProductCard({ product }) {
               whiteSpace: "nowrap",
             }}
           >
-            {product.name}
+            {name}
           </div>
           <div style={{ marginTop: 4, display: "flex", alignItems: "baseline", gap: 6 }}>
             {product.salePrice ? (
