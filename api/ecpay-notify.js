@@ -143,7 +143,7 @@ export default async function handler(req, res) {
       // 所以同一筆訂單有可能收到不只一次「付款成功」通知——一定要先確認「目前還是pending」
       // 才能扣庫存，避免同一筆訂單被重複扣兩次庫存(這是防重複扣款的關鍵保護)。
       const orderRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/pos_orders?id=eq.${data.MerchantTradeNo}&select=type,items`,
+        `${SUPABASE_URL}/rest/v1/pos_orders?id=eq.${data.MerchantTradeNo}&select=type,items,promo_code,member_id`,
         { headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": "Bearer " + SUPABASE_ANON_KEY } }
       );
       const orderRows = orderRes.ok ? await orderRes.json() : [];
@@ -175,6 +175,28 @@ export default async function handler(req, res) {
       // 這裡就跳過，不會重複扣。
       if (isFirstTimeConfirm && Array.isArray(order.items) && order.items.length > 0) {
         await deductInventoryForOrder(order.items, data.MerchantTradeNo);
+      }
+
+      // 付款首次確認成功，才把這筆訂單用到的優惠券標記成「已使用」，連結到這筆訂單。
+      // 特意放在付款「成功確認」這一步才標記，不是在ecpay-checkout建立待付款訂單時就標記，
+      // 是因為待付款訂單有可能被放棄不付款，若那時候就消耗掉優惠券，客人等於白白損失一張券。
+      if (isFirstTimeConfirm && order.promo_code) {
+        const usedCouponIds = order.promo_code.split(",").map((s) => s.trim()).filter(Boolean);
+        for (const mcId of usedCouponIds) {
+          try {
+            await fetch(`${SUPABASE_URL}/rest/v1/member_coupons?id=eq.${encodeURIComponent(mcId)}`, {
+              method: "PATCH",
+              headers: {
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": "Bearer " + SUPABASE_ANON_KEY,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ status: "used", used_at: new Date().toISOString(), used_order_id: data.MerchantTradeNo }),
+            });
+          } catch (e) {
+            console.warn("標記優惠券已使用失敗:", mcId, e);
+          }
+        }
       }
     } catch (e) {
       console.error("更新訂單狀態時發生錯誤:", e);
