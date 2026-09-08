@@ -16,6 +16,7 @@ import LoginPage from "./pages/LoginPage.jsx";
 import AccountPage from "./pages/AccountPage.jsx";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage.jsx";
 import UpdatePasswordPage from "./pages/UpdatePasswordPage.jsx";
+import CouponCenterPage from "./pages/CouponCenterPage.jsx";
 
 // 注意：選單現在統一由MenuNav管理(讀取ERP「網店設計→🧭編輯目錄」的設定)，
 // 不再自動列出所有頁面——要顯示在導覽列的頁面，需要在ERP的網店目錄裡手動加進去，
@@ -102,6 +103,9 @@ function NavBar() {
           >
             {lang === "en" ? "中文" : "EN"}
           </button>
+          <Link to="/coupon-center" style={{ textDecoration: "none", color: "#222", fontSize: 14 }}>
+            🎟️ 領券中心
+          </Link>
           <Link to={user ? "/account" : "/login"} style={{ textDecoration: "none", color: "#222", fontSize: 14 }}>
             {user ? "我的帳戶" : "登入"}
           </Link>
@@ -143,6 +147,9 @@ function NavBar() {
             />
           </form>
           <MenuNav vertical />
+          <Link to="/coupon-center" onClick={() => setMobileOpen(false)} style={{ textDecoration: "none", color: "#222", fontSize: 14 }}>
+            🎟️ 領券中心
+          </Link>
           <button
             onClick={() => setLang(lang === "en" ? "zh" : "en")}
             style={{ background: "none", border: "1px solid #ddd", borderRadius: 14, padding: "5px 12px", fontSize: 13, cursor: "pointer", color: "#666", alignSelf: "flex-start" }}
@@ -181,6 +188,7 @@ export default function App() {
               <Route path="/account" element={<AccountPage />} />
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
               <Route path="/update-password" element={<UpdatePasswordPage />} />
+              <Route path="/coupon-center" element={<CouponCenterPage />} />
             </Routes>
             <Footer />
           </BrowserRouter>
