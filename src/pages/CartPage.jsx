@@ -1,9 +1,31 @@
 import { Link, useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
 import { useCart } from "../CartContext.jsx";
+import { useAuth } from "../AuthContext.jsx";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "../supabase.js";
+import { findUsableCoupons } from "../couponUtils.js";
 
 export default function CartPage() {
   const { items, updateQty, removeItem, totalPrice } = useCart();
+  const { member } = useAuth();
   const navigate = useNavigate();
+  const [usableCount, setUsableCount] = useState(0);
+
+  // 檢查會員手上有沒有「已達最低消費門檻、還沒使用」的優惠券，主動提示，
+  // 不用等客人自己想到要去帳戶頁面翻優惠券
+  useEffect(() => {
+    if (!member?.id || totalPrice <= 0) { setUsableCount(0); return; }
+    fetch(
+      `${SUPABASE_URL}/rest/v1/member_coupons?member_id=eq.${encodeURIComponent(member.id)}&status=eq.unused&select=*,coupons(*)`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + SUPABASE_ANON_KEY } }
+    )
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        const mapped = (Array.isArray(data) ? data : []).map((mc) => ({ ...mc, coupon: mc.coupons }));
+        setUsableCount(findUsableCoupons(mapped, totalPrice).length);
+      })
+      .catch(() => {});
+  }, [member?.id, totalPrice]);
 
   if (items.length === 0) {
     return (
@@ -113,6 +135,22 @@ export default function CartPage() {
           </button>
         </div>
       ))}
+
+      {usableCount > 0 && (
+        <div
+          style={{
+            background: "#fdf3ec",
+            border: "1px solid #e8a33d",
+            borderRadius: 8,
+            padding: "12px 16px",
+            marginTop: 16,
+            fontSize: 13,
+            color: "#a05a00",
+          }}
+        >
+          🎟️ 你有 {usableCount} 張優惠券已達使用門檻，前往結帳即可選用折抵
+        </div>
+      )}
 
       <div
         style={{
