@@ -6,6 +6,9 @@ import { fetchAuthSettings, checkEmailExists } from "../supabase.js";
 export default function LoginPage() {
   const { user, signUpWithEmail, signInWithEmail, signInWithProvider, resendConfirmationEmail } = useAuth();
   const navigate = useNavigate();
+  // return_to：業界標準的登入後導向做法，記住客人登入前原本想做的事(例如想在領券中心領一張券)，
+  // 登入成功後導回那裡繼續完成，而不是一律導去「我的帳戶」讓客人自己重新找路。
+  const returnTo = new URLSearchParams(window.location.search).get("return_to");
 
   const [authSettings, setAuthSettings] = useState(null);
   const [mode, setMode] = useState("login"); // login | signup
@@ -23,9 +26,9 @@ export default function LoginPage() {
     fetchAuthSettings().then(setAuthSettings);
   }, []);
 
-  // 已經登入的人不需要再看到登入頁，直接導去「我的訂單」
+  // 已經登入的人不需要再看到登入頁，導去return_to(有的話)或「我的訂單」
   useEffect(() => {
-    if (user) navigate("/account");
+    if (user) navigate(returnTo || "/account");
   }, [user]);
 
   // 切換login/signup模式時，清空表單和提示，避免殘留上一次的輸入或訊息
@@ -79,7 +82,7 @@ export default function LoginPage() {
       }
       // 登入成功的話，user state 會自動更新，上面的 useEffect 會處理導頁
     } else {
-      const { data, error } = await signUpWithEmail(email, password);
+      const { data, error } = await signUpWithEmail(email, password, returnTo);
       if (error) {
         setError(error.message);
         setSubmitting(false);
