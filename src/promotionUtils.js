@@ -46,18 +46,35 @@ export function filterByChannel(promotions, channel) {
   return (promotions || []).filter((p) => p[key] !== false);
 }
 
-// 從一批候選促銷活動裡，找出目前(依小計/件數)實際符合資格、且套用起來折扣最多的那一個，
-// 用於「自動套用」情境：系統自動找最優惠的促銷活動套用，不用客人/店員手動選。
-// 只在候選促銷之間彼此不可疊加時使用這個函式；可疊加的活動應該各自獨立計算後加總。
-export function findBestAutoPromotion(promotions, subtotal, qty) {
-  let best = null;
-  let bestDiscount = 0;
-  for (const p of promotions || []) {
+// 自動組合目前所有符合資格的促銷活動：可疊加的活動全部加總、不可疊加的活動裡取單一折扣最高者，
+// 兩個方案比較取較優惠的那個，這是「自動套用」情境下的完整組合演算法。
+// 跟POS.jsx用的是完全一致的邏輯，確保同一批促銷活動不管在門市還是官網，算出來的折扣都一樣。
+export function combinePromotionDiscounts(promotions, subtotal, qty) {
+  const eligible = (promotions || []).filter((p) => isPromotionEligible(p, subtotal, qty));
+  const stackableTotal = eligible.filter((p) => p.stackable).reduce((sum, p) => sum + calcPromotionDiscount(p, subtotal, qty), 0);
+  const nonStackableBest = Math.max(0, ...eligible.filter((p) => !p.stackable).map((p) => calcPromotionDiscount(p, subtotal, qty)));
+  return Math.min(Math.max(stackableTotal, nonStackableBest), subtotal);
+}
+
+// 回傳「實際被套用」的促銷活動清單(不只是折扣金額)，用於畫面顯示活動名稱給客人看，
+// 判斷方式：先算出combinePromotionDiscounts的結果，再判斷是可疊加組合贏、還是某個不可疊加活動單獨贏，
+// 對應回傳可疊加組合的全部清單、或該筆不可疊加活動自己。
+export function getAppliedPromotions(promotions, subtotal, qty) {
+  const eligible = (promotions || []).filter((p) => isPromotionEligible(p, subtotal, qty));
+  const stackable = eligible.filter((p) => p.stackable);
+  const stackableTotal = stackable.reduce((sum, p) => sum + calcPromotionDiscount(p, subtotal, qty), 0);
+  const nonStackable = eligible.filter((p) => !p.stackable);
+  let bestNonStackable = null;
+  let bestNonStackableDiscount = 0;
+  for (const p of nonStackable) {
     const d = calcPromotionDiscount(p, subtotal, qty);
-    if (d > bestDiscount) {
-      best = p;
-      bestDiscount = d;
+    if (d > bestNonStackableDiscount) {
+      bestNonStackable = p;
+      bestNonStackableDiscount = d;
     }
   }
-  return best ? { promotion: best, discount: bestDiscount } : null;
+  if (stackableTotal >= bestNonStackableDiscount) {
+    return stackable.filter((p) => calcPromotionDiscount(p, subtotal, qty) > 0);
+  }
+  return bestNonStackable ? [bestNonStackable] : [];
 }
