@@ -52,7 +52,7 @@ export default async function handler(req, res) {
 
   try {
     const {
-      items, totalAmount, shippingFee, orderId,
+      items, totalAmount, discountAmount, couponIds, shippingFee, orderId,
       customerName, customerPhone, customerEmail, memberEmail, memberId,
       shipMethod, shipMethodType, shipAddress,
       cvsStoreId, cvsStoreName, cvsStoreAddress,
@@ -83,12 +83,17 @@ export default async function handler(req, res) {
       return;
     }
 
-    // 真正要收的金額 = 商品小計 + 運費，後端重新算一次，不直接信任前端傳來的總額，
+    // 真正要收的金額 = 商品小計 + 運費 - 折扣，後端重新算一次，不直接信任前端傳來的總額，
     // 避免前端漏算運費或被竄改（運費本身則是前端依「目前後台設定」算好傳過來的，
     // 因為這支API本身沒有另外查shop_shipping_methods，先用這個方式維持單一資料來源在前端）
     const itemsSubtotal = Math.round(totalAmount);
     const finalShippingFee = Math.round(Number(shippingFee) || 0);
-    const orderTotal = itemsSubtotal + finalShippingFee;
+    // 折扣金額防呆：不能是負數、也不能超過商品小計本身，避免被竄改成不合理的折扣金額
+    // (真正合不合法的疊加規則計算在前端couponUtils.js做過一次，這裡只做基本的金額邊界防護，
+    // 不重新驗證疊加規則本身，因為驗證需要查詢優惠券資料，這裡先以「不能超過小計」做基本保護)
+    const finalDiscount = Math.max(0, Math.min(Math.round(Number(discountAmount) || 0), itemsSubtotal));
+    const orderTotal = itemsSubtotal + finalShippingFee - finalDiscount;
+    const usedCouponIds = Array.isArray(couponIds) ? couponIds.filter(Boolean) : [];
 
     // 依配送類型組成要存進pos_orders.ship_address的文字：
     // 宅配存自由輸入地址；超商取貨存「門市名稱（代號）地址」方便ERP端直接看懂，不用再查門市代號對照表
@@ -126,14 +131,14 @@ export default async function handler(req, res) {
           store_id: "web",
           store_name: "TATA 官網",
           staff: "線上訂單",
-          items: items.map((i) => ({ name: i.name, qty: i.qty, sku: i.sku || "", variant: i.variantName || "" })),
+          items: items.map((i) => ({ name: i.name, qty: i.qty, sku: i.sku || "", variant: i.variant || "", price: i.price || 0, image: i.image || "" })),
           subtotal: itemsSubtotal,
-          discount: 0,
+          discount: finalDiscount,
           total: orderTotal,
-          disc_mode: "none",
+          disc_mode: finalDiscount > 0 ? "coupon" : "none",
           disc_pct: 100,
-          disc_amt: 0,
-          promo_code: null,
+          disc_amt: finalDiscount,
+          promo_code: usedCouponIds.length > 0 ? usedCouponIds.join(",") : null,
           pay_method: "credit",
           pay_slots: null,
           deposit_used: 0,
