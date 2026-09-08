@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useCart } from "../CartContext.jsx";
 import { useAuth } from "../AuthContext.jsx";
 import { fetchShippingMethods, SUPABASE_URL, SUPABASE_ANON_KEY } from "../supabase.js";
+import { resolveValidSelection, canAddCoupon, calcDiscount, findUsableCoupons } from "../couponUtils.js";
 
 // 產生一個不重複的訂單編號：時間戳記 + 隨機碼，符合 ECPay 規定（英數字、20字以內）
 function generateOrderId() {
@@ -37,6 +38,11 @@ export default function CheckoutPage() {
   const [shipMethods, setShipMethods] = useState([]);
   const [shipMethodsLoading, setShipMethodsLoading] = useState(true);
 
+  // 優惠券：會員擁有的所有未使用優惠券、目前已選取要套用的優惠券
+  const [memberCoupons, setMemberCoupons] = useState([]);
+  const [selectedCoupons, setSelectedCoupons] = useState([]);
+  const [couponsLoading, setCouponsLoading] = useState(false);
+
   // 訂購人/收件資訊：如果有登入會員，姓名/Email會先帶入會員資料，客人仍可自行修改
   const [customerInfo, setCustomerInfo] = useState({
     name: "",
@@ -70,6 +76,32 @@ export default function CheckoutPage() {
     });
     setPrefilledFromMember(true);
   }, [member, user, prefilledFromMember]);
+
+  // 載入會員擁有的所有未使用優惠券，供結帳時選擇套用
+  useEffect(() => {
+    if (!member?.id) return;
+    setCouponsLoading(true);
+    fetch(
+      `${SUPABASE_URL}/rest/v1/member_coupons?member_id=eq.${encodeURIComponent(member.id)}&status=eq.unused&select=*,coupons(*)`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + SUPABASE_ANON_KEY } }
+    )
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        const mapped = (Array.isArray(data) ? data : []).map((mc) => ({ ...mc, coupon: mc.coupons }));
+        setMemberCoupons(mapped);
+        setCouponsLoading(false);
+      })
+      .catch(() => setCouponsLoading(false));
+  }, [member?.id]);
+
+  function toggleCoupon(mc) {
+    setSelectedCoupons((prev) => {
+      const already = prev.find((c) => c.id === mc.id);
+      if (already) return prev.filter((c) => c.id !== mc.id);
+      if (!canAddCoupon(mc.coupon, prev)) return prev; // 違反疊加規則，不允許加入
+      return [...prev, mc];
+    });
+  }
 
   // 載入配送方式清單，並處理「客人剛從綠界門市地圖選完店繞回來」的情境
   useEffect(() => {
@@ -126,7 +158,12 @@ export default function CheckoutPage() {
 
   const selectedMethod = shipMethods.find((m) => m.id === customerInfo.shipMethodId) || null;
   const shippingFee = selectedMethod?.fee_amount || 0;
-  const grandTotal = totalPrice + shippingFee;
+  // 疊加規則可能因為使用者操作順序讓selectedCoupons出現不合法組合(理論上toggleCoupon已經擋掉，
+  // 這裡再保險計算一次合法子集合，確保實際折抵金額一定符合疊加規則)
+  const validSelectedCoupons = resolveValidSelection(selectedCoupons);
+  const discountAmount = calcDiscount(totalPrice, validSelectedCoupons);
+  const grandTotal = totalPrice + shippingFee - discountAmount;
+  const usableCoupons = findUsableCoupons(memberCoupons, totalPrice);
 
   // 切換配送方式時，舊的門市選擇就不適用了，清掉避免送出時帶著錯的門市資訊
   function handleSelectShipMethod(method) {
@@ -203,6 +240,8 @@ export default function CheckoutPage() {
           // 送出時被丟掉，現在完整保留下來。
           items: items.map((i) => ({ name: i.name, sku: i.sku, variant: i.variantName, qty: i.qty, price: i.price, image: i.image })),
           totalAmount: totalPrice,
+          discountAmount,
+          couponIds: validSelectedCoupons.map((c) => c.id),
           shippingFee,
           orderId,
           customerName: customerInfo.name.trim(),
@@ -286,6 +325,57 @@ export default function CheckoutPage() {
         <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0 10px", fontSize: 13, color: "#666" }}>
           <span>運費（{selectedMethod.name}）</span>
           <span>{shippingFee > 0 ? `NT$${shippingFee}` : "免運"}</span>
+        </div>
+      )}
+
+      {member && (
+        <div style={{ padding: "10px 0", borderTop: "1px dashed #eee" }}>
+          {usableCoupons.length === 0 && couponsLoading === false && memberCoupons.length === 0 && (
+            <div style={{ fontSize: 12, color: "#999" }}>目前沒有可使用的優惠券</div>
+          )}
+          {usableCoupons.length === 0 && memberCoupons.length > 0 && (
+            <div style={{ fontSize: 12, color: "#999" }}>目前商品金額還沒達到任何優惠券的使用門檻</div>
+          )}
+          {usableCoupons.map((mc) => {
+            const isSelected = !!selectedCoupons.find((c) => c.id === mc.id);
+            const wouldViolateStack = !isSelected && !canAddCoupon(mc.coupon, selectedCoupons);
+            return (
+              <label
+                key={mc.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "8px 0",
+                  fontSize: 13,
+                  cursor: wouldViolateStack ? "not-allowed" : "pointer",
+                  opacity: wouldViolateStack ? 0.4 : 1,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  disabled={wouldViolateStack}
+                  onChange={() => toggleCoupon(mc)}
+                />
+                <span style={{ flex: 1 }}>
+                  {mc.coupon.name}
+                  {mc.coupon.stackable && <span style={{ marginLeft: 6, fontSize: 10, color: "#2e7d32" }}>可疊加</span>}
+                  {wouldViolateStack && <span style={{ marginLeft: 6, fontSize: 11, color: "#bbb" }}>（已選其他券，無法同時使用）</span>}
+                </span>
+                <span style={{ color: "#c0392b", fontWeight: 700 }}>
+                  {mc.coupon.discount_type === "percent" ? `${mc.coupon.discount_value}折` : `-NT$${mc.coupon.discount_value}`}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      )}
+
+      {discountAmount > 0 && (
+        <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0 10px", fontSize: 13, color: "#c0392b" }}>
+          <span>優惠券折抵</span>
+          <span>-NT${discountAmount}</span>
         </div>
       )}
 
