@@ -4,12 +4,15 @@ import { useCart } from "../CartContext.jsx";
 import { useAuth } from "../AuthContext.jsx";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "../supabase.js";
 import { findUsableCoupons } from "../couponUtils.js";
+import { combinePromotionDiscounts, getAppliedPromotions } from "../promotionUtils.js";
 
 export default function CartPage() {
   const { items, updateQty, removeItem, totalPrice } = useCart();
   const { member } = useAuth();
   const navigate = useNavigate();
   const [usableCount, setUsableCount] = useState(0);
+  const [promotionActivities, setPromotionActivities] = useState([]);
+  const totalQty = items.reduce((sum, i) => sum + (i.qty || 0), 0);
 
   // 檢查會員手上有沒有「已達最低消費門檻、還沒使用」的優惠券，主動提示，
   // 不用等客人自己想到要去帳戶頁面翻優惠券
@@ -26,6 +29,19 @@ export default function CartPage() {
       })
       .catch(() => {});
   }, [member?.id, totalPrice]);
+
+  // 促銷活動(滿額折/滿件折/階梯折扣)：不需要登入，任何訪客都能自動享有
+  useEffect(() => {
+    fetch(
+      `${SUPABASE_URL}/rest/v1/promotions?active=eq.true&channel_online=eq.true&select=*`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + SUPABASE_ANON_KEY } }
+    )
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => setPromotionActivities(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, []);
+  const appliedPromotions = getAppliedPromotions(promotionActivities, totalPrice, totalQty);
+  const promotionDiscount = combinePromotionDiscounts(promotionActivities, totalPrice, totalQty);
 
   if (items.length === 0) {
     return (
@@ -135,6 +151,22 @@ export default function CartPage() {
           </button>
         </div>
       ))}
+
+      {appliedPromotions.length > 0 && (
+        <div
+          style={{
+            background: "#eaf7ee",
+            border: "1px solid #2e7d32",
+            borderRadius: 8,
+            padding: "12px 16px",
+            marginTop: 16,
+            fontSize: 13,
+            color: "#1b5e20",
+          }}
+        >
+          🎉 已自動套用「{appliedPromotions.map((p) => p.name).join("、")}」，折抵 NT${promotionDiscount}
+        </div>
+      )}
 
       {usableCount > 0 && (
         <div
