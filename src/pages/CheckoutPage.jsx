@@ -4,6 +4,7 @@ import { useCart } from "../CartContext.jsx";
 import { useAuth } from "../AuthContext.jsx";
 import { fetchShippingMethods, SUPABASE_URL, SUPABASE_ANON_KEY } from "../supabase.js";
 import { resolveValidSelection, canAddCoupon, calcDiscount, findUsableCoupons } from "../couponUtils.js";
+import { combinePromotionDiscounts, getAppliedPromotions } from "../promotionUtils.js";
 
 // 產生一個不重複的訂單編號：時間戳記 + 隨機碼，符合 ECPay 規定（英數字、20字以內）
 function generateOrderId() {
@@ -42,6 +43,9 @@ export default function CheckoutPage() {
   const [memberCoupons, setMemberCoupons] = useState([]);
   const [selectedCoupons, setSelectedCoupons] = useState([]);
   const [couponsLoading, setCouponsLoading] = useState(false);
+
+  // 促銷活動(滿額折/滿件折/階梯式件數折扣)：全自動套用，不用客人手動選
+  const [promotionActivities, setPromotionActivities] = useState([]);
 
   // 訂購人/收件資訊：如果有登入會員，姓名/Email會先帶入會員資料，客人仍可自行修改
   const [customerInfo, setCustomerInfo] = useState({
@@ -93,6 +97,17 @@ export default function CheckoutPage() {
       })
       .catch(() => setCouponsLoading(false));
   }, [member?.id]);
+
+  // 載入促銷活動(滿額折/滿件折/階梯式件數折扣)：不需要登入，任何訪客都能自動享有
+  useEffect(() => {
+    fetch(
+      `${SUPABASE_URL}/rest/v1/promotions?active=eq.true&channel_online=eq.true&select=*`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + SUPABASE_ANON_KEY } }
+    )
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => setPromotionActivities(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, []);
 
   function toggleCoupon(mc) {
     setSelectedCoupons((prev) => {
@@ -158,10 +173,16 @@ export default function CheckoutPage() {
 
   const selectedMethod = shipMethods.find((m) => m.id === customerInfo.shipMethodId) || null;
   const shippingFee = selectedMethod?.fee_amount || 0;
+  const totalQty = items.reduce((sum, i) => sum + (i.qty || 0), 0);
   // 疊加規則可能因為使用者操作順序讓selectedCoupons出現不合法組合(理論上toggleCoupon已經擋掉，
   // 這裡再保險計算一次合法子集合，確保實際折抵金額一定符合疊加規則)
   const validSelectedCoupons = resolveValidSelection(selectedCoupons);
-  const discountAmount = calcDiscount(totalPrice, validSelectedCoupons);
+  const couponDiscount = calcDiscount(totalPrice, validSelectedCoupons);
+  // 促銷活動(滿額折/滿件折/階梯折扣)全自動套用，跟優惠券折扣是兩個獨立的折扣來源，直接加總，
+  // 但整體折扣不會超過商品小計本身(不會讓應付金額變負數)
+  const promotionDiscount = combinePromotionDiscounts(promotionActivities, totalPrice, totalQty);
+  const appliedPromotions = getAppliedPromotions(promotionActivities, totalPrice, totalQty);
+  const discountAmount = Math.min(couponDiscount + promotionDiscount, totalPrice);
   const grandTotal = totalPrice + shippingFee - discountAmount;
   const usableCoupons = findUsableCoupons(memberCoupons, totalPrice);
 
@@ -372,10 +393,27 @@ export default function CheckoutPage() {
         </div>
       )}
 
-      {discountAmount > 0 && (
+      {appliedPromotions.length > 0 && (
+        <div style={{ padding: "10px 0", borderTop: "1px dashed #eee" }}>
+          {appliedPromotions.map((p) => (
+            <div key={p.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#2e7d32", padding: "3px 0" }}>
+              <span>🎉 已自動套用：{p.name}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {promotionDiscount > 0 && (
+        <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, color: "#2e7d32" }}>
+          <span>促銷活動折抵</span>
+          <span>-NT${promotionDiscount}</span>
+        </div>
+      )}
+
+      {couponDiscount > 0 && (
         <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0 10px", fontSize: 13, color: "#c0392b" }}>
           <span>優惠券折抵</span>
-          <span>-NT${discountAmount}</span>
+          <span>-NT${couponDiscount}</span>
         </div>
       )}
 
