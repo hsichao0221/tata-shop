@@ -81,13 +81,15 @@ export function AuthProvider({ children }) {
     return () => listener?.subscription?.unsubscribe();
   }, []);
 
-  async function signUpWithEmail(email, password) {
-    // 加上emailRedirectTo，讓驗證信裡的連結點擊後直接導到「我的帳戶」，
-    // 不是Supabase預設會導去的網站首頁(Site URL)，減少客人還要自己再點一次「帳戶」的多餘步驟
+  async function signUpWithEmail(email, password, redirectPath) {
+    // 加上emailRedirectTo，讓驗證信裡的連結點擊後直接導到指定頁面(預設「我的帳戶」，
+    // 但呼叫端可以傳入redirectPath覆寫，例如「客人在領券中心想領券才去註冊」的情境，
+    // 收信驗證完應該導回領券中心繼續完成領取，而不是導去我的帳戶讓客人自己重新找路)，
+    // 不是Supabase預設會導去的網站首頁(Site URL)，減少客人還要自己再點一次的多餘步驟
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { emailRedirectTo: `${window.location.origin}/account` },
+      options: { emailRedirectTo: `${window.location.origin}${redirectPath || "/account"}` },
     });
     // 如果 Supabase 後台「Confirm email」是開啟的，data.session 會是 null，
     // 代表顧客註冊後還需要去信箱點確認連結才能登入；
