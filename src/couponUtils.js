@@ -58,6 +58,7 @@ export function findUsableCoupons(memberCoupons, subtotal) {
     if (mc.status !== "unused") return false;
     const c = mc.coupon;
     if (!c) return false;
+    if (c.channel_online === false) return false; // ERP設定「不適用官網」的優惠券，這裡要正確擋掉
     if (c.expire_date && new Date(c.expire_date) < now) return false;
     if ((c.min_spend || 0) > subtotal) return false;
     return true;
