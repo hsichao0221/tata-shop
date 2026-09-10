@@ -143,7 +143,7 @@ export default async function handler(req, res) {
       // 所以同一筆訂單有可能收到不只一次「付款成功」通知——一定要先確認「目前還是pending」
       // 才能扣庫存，避免同一筆訂單被重複扣兩次庫存(這是防重複扣款的關鍵保護)。
       const orderRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/pos_orders?id=eq.${data.MerchantTradeNo}&select=type,items,promo_code,member_id`,
+        `${SUPABASE_URL}/rest/v1/pos_orders?id=eq.${data.MerchantTradeNo}&select=type,items,promo_code,member_id,total,customer_email,customer_phone,member_name`,
         { headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": "Bearer " + SUPABASE_ANON_KEY } }
       );
       const orderRows = orderRes.ok ? await orderRes.json() : [];
@@ -196,6 +196,39 @@ export default async function handler(req, res) {
           } catch (e) {
             console.warn("標記優惠券已使用失敗:", mcId, e);
           }
+        }
+      }
+      // 付款首次確認成功，才觸發電子發票開立。官網固定走綠界(不需要像POS門市那樣判斷是不是
+      // 「本店自行收款」，因為官網本來就是TATA自己收款、自己開票，跟百貨專櫃那套完全無關)。
+      // 特意放在付款「成功確認」這一步，不是建立待付款訂單時就開票，避免客人棄單卻已經開了發票要作廢。
+      if (isFirstTimeConfirm) {
+        try {
+          const invRes = await fetch(`${req.headers.origin || "https://" + req.headers.host}/api/einvoice-issue`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              orderId: data.MerchantTradeNo,
+              items: (order.items || []).map((i) => ({ name: i.name, qty: i.qty, unit: "件", price: i.price, amount: i.price * i.qty })),
+              totalAmount: order.total,
+              invoiceType: "print",
+              buyerEmail: order.customer_email || "",
+              buyerPhone: order.customer_phone || "",
+              buyerName: order.member_name || "",
+              productServiceId: process.env.ECPAY_EINVOICE_ONLINE_PRODUCT_SERVICE_ID || "",
+            }),
+          });
+          const invData = await invRes.json();
+          if (invData.success) {
+            await fetch(`${SUPABASE_URL}/rest/v1/pos_orders?id=eq.${data.MerchantTradeNo}`, {
+              method: "PATCH",
+              headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": "Bearer " + SUPABASE_ANON_KEY, "Content-Type": "application/json" },
+              body: JSON.stringify({ invoice_no: invData.invoiceNo, invoice_date: invData.invoiceDate }),
+            });
+          } else {
+            console.error("官網發票開立失敗:", data.MerchantTradeNo, invData.error);
+          }
+        } catch (e) {
+          console.error("官網發票開立時發生錯誤:", data.MerchantTradeNo, e);
         }
       }
     } catch (e) {
