@@ -92,7 +92,10 @@ export default async function handler(req, res) {
       Print = "1"; // 預設一般列印
     }
 
-    const relateNumber = ("TATA" + (orderId || Date.now()).toString().replace(/[^a-zA-Z0-9]/g, "")).slice(0, 50);
+    // RelateNumber只需要保證唯一即可，不需要綁死特定品牌名稱(方便未來白牌客戶使用同一套系統時，
+    // 不會在交易編號裡出現不屬於他們的品牌字樣)；可透過環境變數客製前綴，沒設定則用通用的ORD
+    const relatePrefix = process.env.ECPAY_EINVOICE_RELATE_PREFIX || "ORD";
+    const relateNumber = (relatePrefix + (orderId || Date.now()).toString().replace(/[^a-zA-Z0-9]/g, "")).slice(0, 50);
 
     const invoiceData = {
       MerchantID: MERCHANT_ID,
