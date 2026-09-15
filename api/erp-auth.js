@@ -157,6 +157,11 @@ export default async function handler(req, res) {
         res.status(400).json({ error: "密碼至少需要8個字元" });
         return;
       }
+      // 密碼必須包含至少一個中文字或英文字母，不能是純數字/符號組成(例如12345678這種)
+      if (!/[a-zA-Z\u4e00-\u9fff]/.test(newPassword)) {
+        res.status(400).json({ error: "密碼需包含至少一個中文字或英文字母，不能是純數字" });
+        return;
+      }
       const tokenHash = hashToken(token);
       const userRes = await sbFetch(`/pos_users?email=eq.${encodeURIComponent(email)}&invite_token_hash=eq.${tokenHash}&select=id,invite_expires_at`);
       const users = await userRes.json();
