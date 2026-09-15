@@ -96,7 +96,7 @@ export default async function handler(req, res) {
         method: "POST",
         headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          from: "TATA ERP <onboarding@resend.dev>",
+          from: "TATA ERP <noreply@mail.tata-style.com>",
           to: [email],
           subject: "你的 TATA ERP 帳號邀請",
           html: `<p>您好 ${name || ""}，</p><p>已經幫您建立 TATA ERP 後台帳號，請點擊下方連結設定您的登入密碼(連結72小時內有效)：</p><p><a href="${setPasswordUrl}">${setPasswordUrl}</a></p>`,
