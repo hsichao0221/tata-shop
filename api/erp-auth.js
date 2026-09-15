@@ -116,6 +116,78 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── 忘記密碼：員工自己在登入頁申請，不需要管理員手動觸發 ──────────────
+  // 重用跟invite完全一樣的token產生/寄信機制，差別在於用email查帳號(不是userId，
+  // 因為申請的人自己不會知道自己的userId)。不管有沒有找到符合的帳號，都回傳一樣的
+  // 成功訊息，避免這個端點被用來測試哪些email有在系統裡註冊過(業界標準做法)。
+  if (action === "forgot-password") {
+    try {
+      const { email, loginUrl } = req.body || {};
+      if (!email) {
+        res.status(400).json({ error: "請輸入email" });
+        return;
+      }
+      const genericSuccess = () => res.status(200).json({ success: true });
+
+      if (!RESEND_API_KEY) {
+        // 內部設定問題不該讓使用者知道帳號存不存在，但也不能假裝成功卻什麼都沒發生，
+        // 這種情況記錄下來讓開發者事後排查，前端一樣顯示成功訊息
+        console.error("forgot-password: 尚未設定RESEND_API_KEY環境變數");
+        genericSuccess();
+        return;
+      }
+
+      const findRes = await sbFetch(
+        `/pos_users?email=eq.${encodeURIComponent(email)}&active=eq.true&select=id,name,email`
+      );
+      const found = findRes.ok ? await findRes.json() : [];
+      const u = found?.[0];
+
+      if (!u) {
+        genericSuccess(); // 查無此帳號，一樣回傳成功，不洩漏帳號是否存在
+        return;
+      }
+
+      const token = generateToken();
+      const tokenHash = hashToken(token);
+      const expiresAt = new Date(Date.now() + INVITE_EXPIRE_HOURS * 3600 * 1000).toISOString();
+
+      const updateRes = await sbFetch(`/pos_users?id=eq.${encodeURIComponent(u.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ invite_token_hash: tokenHash, invite_expires_at: expiresAt }),
+      });
+      if (!updateRes.ok) {
+        console.error("forgot-password: 寫入重設碼失敗", u.id);
+        genericSuccess(); // 內部失敗一樣不洩漏給前端，但已經記錄下來
+        return;
+      }
+
+      const setPasswordUrl = `${loginUrl || "https://fashion-erp-ten.vercel.app"}?invite=${token}&email=${encodeURIComponent(u.email)}`;
+      const emailRes = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: "TATA ERP <noreply@mail.tata-style.com>",
+          to: [u.email],
+          subject: "重設你的 TATA ERP 密碼",
+          html: `<p>您好 ${u.name || ""}，</p><p>收到您的密碼重設申請，請點擊下方連結設定新密碼(連結72小時內有效，如果不是您本人申請，請忽略這封信)：</p><p><a href="${setPasswordUrl}">${setPasswordUrl}</a></p>`,
+        }),
+      });
+      if (!emailRes.ok) {
+        const errData = await emailRes.json().catch(() => ({}));
+        console.error("forgot-password: 重設信寄送失敗", errData);
+        genericSuccess(); // 寄信失敗一樣不洩漏給前端，但已經記錄下來方便排查
+        return;
+      }
+
+      genericSuccess();
+    } catch (e) {
+      console.error("forgot-password error:", e);
+      res.status(200).json({ success: true }); // 就算發生錯誤，也不洩漏任何帳號存在與否的資訊
+    }
+    return;
+  }
+
   // ── 驗證邀請碼是否有效：設定密碼頁面載入時先呼叫這個，確認連結沒過期 ────
   if (action === "check-invite") {
     try {
