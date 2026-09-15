@@ -29,8 +29,19 @@ function PageBlock({ block, categories, products }) {
       return <ProductCarouselBlock block={block} products={products} />;
     case "text_block":
       return <TextBlockSection block={block} />;
-    case "spacer":
-      return <div style={{ height: block.height || 32 }} />;
+    case "spacer": {
+      const hDesktop = block.height || 32;
+      const hMobile = block.heightMobile;
+      const cls = `sp-${block.id}`;
+      return (
+        <>
+          <div className={cls} style={{ height: hDesktop }} />
+          {hMobile && hMobile !== hDesktop && (
+            <style>{`@media (max-width: 767px) { .${cls} { height: ${hMobile}px !important; } }`}</style>
+          )}
+        </>
+      );
+    }
     default:
       return null;
   }
@@ -38,8 +49,11 @@ function PageBlock({ block, categories, products }) {
 
 function HeroBannerBlock({ block }) {
   const h = Number(block.height) || null;
+  const hMobile = Number(block.heightMobile) || h;
+  const cls = `hb-${block.id}`;
   const content = (
     <div
+      className={cls}
       style={{
         textAlign: "center",
         padding: h ? "0 16px" : "48px 16px",
@@ -57,8 +71,9 @@ function HeroBannerBlock({ block }) {
       }}
     >
       <h1
+        className={`${cls}-title`}
         style={{
-          fontSize: 32,
+          fontSize: "clamp(22px, 5vw, 32px)",
           fontWeight: 700,
           letterSpacing: 3,
           margin: 0,
@@ -69,6 +84,18 @@ function HeroBannerBlock({ block }) {
       </h1>
       {block.subtitle && (
         <p style={{ color: block.imageUrl ? "#eee" : "#888", fontSize: 14, marginTop: 8 }}>{block.subtitle}</p>
+      )}
+      {/* 手機螢幕：如果有另外設定手機專用背景圖/高度，用真正的CSS media query切換，
+          避免寬版桌機橫幅圖直接裁切到窄手機螢幕，把重點畫面切掉 */}
+      {(block.imageUrlMobile || hMobile !== h) && (
+        <style>{`
+          @media (max-width: 767px) {
+            .${cls} {
+              ${block.imageUrlMobile ? `background-image: url(${block.imageUrlMobile}) !important;` : ""}
+              ${hMobile ? `height: ${hMobile}px !important;` : ""}
+            }
+          }
+        `}</style>
       )}
     </div>
   );
@@ -164,15 +191,17 @@ function CategoryGridBlock({ block, categories }) {
     .filter(Boolean);
   const items = ids.map((id) => categories.find((c) => c.id === id)).filter(Boolean);
   if (items.length === 0) return null;
-  const columns = block.columns || 4;
+  const columnsDesktop = block.columnsDesktop || block.columns || 4;
+  const columnsMobile = block.columnsMobile || 2;
+  const cls = `cg-${block.id}`;
   return (
-    <div style={{ maxWidth: 1200, margin: "0 auto 32px", padding: "0 16px" }}>
+    <div className={cls} style={{ maxWidth: 1200, margin: "0 auto 32px", padding: "0 16px" }}>
       {block.title && (
         <h2 style={{ fontSize: 16, fontWeight: 700, textAlign: "center", marginBottom: 16, letterSpacing: 1 }}>
           {block.title}
         </h2>
       )}
-      <div style={{ display: "grid", gridTemplateColumns: `repeat(${columns}, 1fr)`, gap: 10 }}>
+      <div className={`${cls}-grid`} style={{ display: "grid", gridTemplateColumns: `repeat(${columnsDesktop}, 1fr)`, gap: 10 }}>
         {items.map((cat) => (
           <Link
             key={cat.id}
@@ -193,19 +222,29 @@ function CategoryGridBlock({ block, categories }) {
           </Link>
         ))}
       </div>
+      {/* 手機螢幕用真正的CSS media query切換成手機版的欄數，跟圖片列同一套做法，
+          避免桌機設定的欄數(例如4格)直接套用到手機上擠成一團 */}
+      <style>{`
+        @media (max-width: 767px) {
+          .${cls}-grid { grid-template-columns: repeat(${columnsMobile}, 1fr) !important; }
+        }
+      `}</style>
     </div>
   );
 }
 
 function ProductCarouselBlock({ block, products }) {
+  const columnsDesktop = block.columnsDesktop || 4;
+  const columnsMobile = block.columnsMobile || 2;
+  const cls = `pc-${block.id}`;
   return (
-    <div style={{ maxWidth: 1200, margin: "0 auto 32px", padding: "0 16px" }}>
+    <div className={cls} style={{ maxWidth: 1200, margin: "0 auto 32px", padding: "0 16px" }}>
       {block.title && (
         <h2 style={{ fontSize: 18, fontWeight: 700, textAlign: "center", marginBottom: 24, letterSpacing: 1 }}>
           {block.title}
         </h2>
       )}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 16 }}>
+      <div className={`${cls}-grid`} style={{ display: "grid", gridTemplateColumns: `repeat(${columnsDesktop}, 1fr)`, gap: 16 }}>
         {products.map((p) => (
           <ProductCard key={p.id || p.sku} product={p} />
         ))}
@@ -229,6 +268,13 @@ function ProductCarouselBlock({ block, products }) {
           查看更多
         </Link>
       </div>
+      {/* 手機螢幕用真正的CSS media query切換成手機版的每排件數，
+          從原本靠grid auto-fill意外還算堪用，改成刻意設計、管理員可以明確控制的欄數 */}
+      <style>{`
+        @media (max-width: 767px) {
+          .${cls}-grid { grid-template-columns: repeat(${columnsMobile}, 1fr) !important; }
+        }
+      `}</style>
     </div>
   );
 }
