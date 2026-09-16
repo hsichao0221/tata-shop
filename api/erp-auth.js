@@ -65,6 +65,52 @@ export default async function handler(req, res) {
 
   const { action } = req.body || {};
 
+  // ── 發送通知信：訊息中心的訂單通知功能用，重用同一套RESEND_API_KEY設定 ──
+  // 通用端點，主旨/內文由呼叫端傳入，不寫死特定通知內容，方便未來其他
+  // 通知事件(不只出貨)也能共用同一個端點。
+  if (action === "send-notification") {
+    try {
+      const { to, subject, body } = req.body || {};
+      if (!to || !subject || !body) {
+        res.status(400).json({ error: "缺少必要參數(to/subject/body)" });
+        return;
+      }
+      // 安全防護：收件人必須是系統裡真實存在的會員信箱才允許發送，
+      // 避免這個端點被拿去對任意信箱發送任意內容、濫用成垃圾郵件轉發站。
+      const memCheck = await sbFetch(`/pos_members?email=eq.${encodeURIComponent(to)}&select=id&limit=1`);
+      const memFound = memCheck.ok ? await memCheck.json() : [];
+      if (!Array.isArray(memFound) || memFound.length === 0) {
+        res.status(403).json({ error: "收件人不是系統內的會員信箱，拒絕發送" });
+        return;
+      }
+      if (!RESEND_API_KEY) {
+        res.status(500).json({ error: "尚未設定RESEND_API_KEY環境變數" });
+        return;
+      }
+      const emailRes = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: "TATA <noreply@mail.tata-style.com>",
+          to: [to],
+          subject,
+          html: `<div style="white-space:pre-wrap;font-family:sans-serif;">${body}</div>`,
+        }),
+      });
+      if (!emailRes.ok) {
+        const errData = await emailRes.json().catch(() => ({}));
+        console.error("send-notification: 寄送失敗", errData);
+        res.status(500).json({ error: "寄送失敗" });
+        return;
+      }
+      res.status(200).json({ success: true });
+    } catch (e) {
+      console.error("send-notification error:", e);
+      res.status(500).json({ error: String(e) });
+    }
+    return;
+  }
+
   // ── 發送邀請信：後台建立員工帳號時呼叫，不設密碼，改寄邀請信 ──────────
   if (action === "invite") {
     try {
