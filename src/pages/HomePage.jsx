@@ -1,21 +1,26 @@
 import { useEffect, useState } from "react";
 import { fetchPages, fetchCategories, resolveBlockProducts } from "../supabase.js";
 import PageBlocksRenderer from "../components/PageBlocks.jsx";
+import { usePageMeta } from "../hooks/usePageMeta.js";
 
 // 首頁現在是「頁面清單」裡被標記為isHomepage的那一頁，不再是獨立的特殊系統，
 // 跟Shopline的設計一致：首頁只是「被指定為預設主頁」的其中一個頁面。
 // 編輯都在ERP後台的「網店設計」進行，這裡只負責讀取後渲染。
 export default function HomePage() {
+  const [page, setPage] = useState(null);
   const [blocks, setBlocks] = useState([]);
   const [categories, setCategories] = useState([]);
   const [blockProducts, setBlockProducts] = useState({});
   const [loading, setLoading] = useState(true);
+
+  usePageMeta(page);
 
   useEffect(() => {
     Promise.all([fetchPages(), fetchCategories()])
       .then(async ([pages, cats]) => {
         const homePage = pages.find((p) => p.isHomepage) || pages[0];
         const enabledBlocks = (homePage?.blocks || []).filter((b) => b.enabled !== false);
+        setPage(homePage || null);
         setCategories(cats);
         setBlocks(enabledBlocks);
         setBlockProducts(await resolveBlockProducts(enabledBlocks, cats));
