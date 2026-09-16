@@ -242,6 +242,14 @@ function PersonalInfoTab({ user, member, updateEmail, updateMemberProfile }) {
       </div>
 
       <div style={sectionCard}>
+        <h3 style={{ fontSize: 14, fontWeight: 700, marginTop: 0, marginBottom: 6 }}>訂單通知設定</h3>
+        <div style={{ color: "#999", fontSize: 12, marginBottom: 14 }}>
+          這裡設定的是訂單狀態通知（例如出貨提醒），跟上面的優惠宣傳訂閱是分開的兩件事。
+        </div>
+        <OrderNotifPrefs member={member} updateMemberProfile={updateMemberProfile} />
+      </div>
+
+      <div style={sectionCard}>
         <h3 style={{ fontSize: 14, fontWeight: 700, marginTop: 0, marginBottom: 16 }}>訂閱偏好</h3>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {[
@@ -255,6 +263,45 @@ function PersonalInfoTab({ user, member, updateEmail, updateMemberProfile }) {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+// 訂單通知設定：跟上面的行銷推播訂閱是分開的獨立機制。
+// LINE連結需要走OAuth流程，這部分等訊息中心階段三串接LINE Messaging API時
+// 才會真正打通，這裡先把介面骨架跟notification_prefs的讀寫做好。
+function OrderNotifPrefs({ member, updateMemberProfile }) {
+  const [prefs, setPrefs] = useState(member?.notification_prefs || { email: true });
+  const [saving, setSaving] = useState(false);
+  const lineLinked = !!member?.channel_identities?.line;
+
+  async function togglePref(key) {
+    const next = { ...prefs, [key]: !prefs[key] };
+    setPrefs(next);
+    setSaving(true);
+    await updateMemberProfile({ notification_prefs: next });
+    setSaving(false);
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#444", cursor: "pointer" }}>
+        <input type="checkbox" checked={!!prefs.email} disabled={saving} onChange={() => togglePref("email")} />
+        Email 通知
+      </label>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: lineLinked ? "#444" : "#bbb" }}>
+        <input type="checkbox" checked={!!prefs.line} disabled={saving || !lineLinked} onChange={() => togglePref("line")} />
+        LINE 通知
+        {lineLinked ? (
+          <span style={{ fontSize: 11, color: "#2e7d32" }}>已連結</span>
+        ) : (
+          <span style={{ fontSize: 11, color: "#999" }}>（尚未連結，即將開放）</span>
+        )}
+      </div>
+      <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#444", cursor: "pointer" }}>
+        <input type="checkbox" checked={!!prefs.inapp} disabled={saving} onChange={() => togglePref("inapp")} />
+        站內通知（登入會員中心時顯示）
+      </label>
     </div>
   );
 }
