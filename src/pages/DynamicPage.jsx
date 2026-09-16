@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { fetchPages, fetchCategories, resolveBlockProducts } from "../supabase.js";
 import PageBlocksRenderer from "../components/PageBlocks.jsx";
+import { usePageMeta } from "../hooks/usePageMeta.js";
 
 // 任何自訂頁面（網址 /pages/:slug）都會走這個元件，對應ERP後台「網店設計」頁面清單裡
 // 除了首頁以外的其他頁面。進階分頁用跟首頁同一套區塊渲染器；文字分頁用簡單的標題+內文版面。
@@ -12,6 +13,8 @@ export default function DynamicPage() {
   const [blockProducts, setBlockProducts] = useState({});
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+
+  usePageMeta(page);
 
   useEffect(() => {
     setLoading(true);
