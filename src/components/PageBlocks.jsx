@@ -1,5 +1,16 @@
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import ProductCard from "./ProductCard.jsx";
+
+// 把YouTube/Vimeo的一般觀看連結轉成可嵌入的embed格式，跟ERP編輯器端用同一套邏輯
+function getVideoEmbedUrl(url) {
+  if (!url) return null;
+  const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/);
+  if (ytMatch) return `https://www.youtube.com/embed/${ytMatch[1]}`;
+  const vimeoMatch = url.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+  if (vimeoMatch) return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
+  return url;
+}
 
 // 共用的區塊渲染器：首頁跟任何自訂頁面（/pages/:slug）都呼叫這個元件來顯示區塊內容，
 // 避免同一套區塊類型的渲染邏輯在多個頁面元件裡重複維護。
@@ -42,6 +53,12 @@ function PageBlock({ block, categories, products }) {
         </>
       );
     }
+    case "faq":
+      return <FaqBlock block={block} />;
+    case "video":
+      return <VideoBlock block={block} />;
+    case "countdown":
+      return <CountdownBlock block={block} />;
     default:
       return null;
   }
@@ -294,5 +311,124 @@ function TextBlockSection({ block }) {
         <p style={{ color: "#555", fontSize: 14, lineHeight: 1.8, whiteSpace: "pre-wrap" }}>{block.body}</p>
       )}
     </div>
+  );
+}
+
+function FaqBlock({ block }) {
+  const [openIdx, setOpenIdx] = useState(null);
+  const items = (block.items || []).filter((it) => it.question);
+  if (items.length === 0) return null;
+  return (
+    <div style={{ maxWidth: 700, margin: "0 auto 32px", padding: "0 16px" }}>
+      {block.title && (
+        <h2 style={{ fontSize: 18, fontWeight: 700, textAlign: "center", marginBottom: 24 }}>{block.title}</h2>
+      )}
+      {items.map((it, i) => {
+        const open = openIdx === i;
+        return (
+          <div key={i} style={{ borderBottom: "1px solid #eee" }}>
+            <button
+              onClick={() => setOpenIdx(open ? null : i)}
+              style={{
+                width: "100%",
+                textAlign: "left",
+                background: "none",
+                border: "none",
+                padding: "16px 0",
+                fontSize: 14,
+                fontWeight: 600,
+                color: "#222",
+                cursor: "pointer",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 12,
+              }}
+            >
+              <span>{it.question}</span>
+              <span style={{ flexShrink: 0, fontSize: 12, color: "#999" }}>{open ? "－" : "＋"}</span>
+            </button>
+            {open && it.answer && (
+              <div style={{ paddingBottom: 16, color: "#666", fontSize: 13, lineHeight: 1.8, whiteSpace: "pre-wrap" }}>
+                {it.answer}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function VideoBlock({ block }) {
+  const embedUrl = getVideoEmbedUrl(block.videoUrl);
+  if (!embedUrl) return null;
+  return (
+    <div style={{ maxWidth: 900, margin: "0 auto 32px", padding: "0 16px" }}>
+      {block.title && (
+        <h2 style={{ fontSize: 18, fontWeight: 700, textAlign: "center", marginBottom: 16 }}>{block.title}</h2>
+      )}
+      <div style={{ position: "relative", paddingTop: "56.25%", background: "#000" }}>
+        <iframe
+          src={embedUrl}
+          style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" }}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+          title={block.title || "影片"}
+        />
+      </div>
+    </div>
+  );
+}
+
+function CountdownBlock({ block }) {
+  const [remaining, setRemaining] = useState(null);
+  useEffect(() => {
+    if (!block.endDateTime) return;
+    const target = new Date(block.endDateTime).getTime();
+    const tick = () => {
+      const diff = target - Date.now();
+      setRemaining(diff > 0 ? diff : 0);
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [block.endDateTime]);
+
+  if (!block.endDateTime) return null;
+  const expired = remaining === 0;
+  const days = remaining ? Math.floor(remaining / 86400000) : 0;
+  const hours = remaining ? Math.floor((remaining % 86400000) / 3600000) : 0;
+  const minutes = remaining ? Math.floor((remaining % 3600000) / 60000) : 0;
+  const seconds = remaining ? Math.floor((remaining % 60000) / 1000) : 0;
+
+  const content = (
+    <div style={{ maxWidth: 500, margin: "0 auto 32px", padding: "24px 16px", textAlign: "center" }}>
+      {block.title && <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>{block.title}</div>}
+      {expired ? (
+        <div style={{ color: "#999", fontSize: 14 }}>{block.expiredText || "活動已結束"}</div>
+      ) : remaining !== null ? (
+        <div style={{ display: "flex", justifyContent: "center", gap: 16 }}>
+          {[
+            [days, "天"],
+            [hours, "時"],
+            [minutes, "分"],
+            [seconds, "秒"],
+          ].map(([val, label]) => (
+            <div key={label}>
+              <div style={{ fontSize: 28, fontWeight: 700, fontFamily: "monospace" }}>{String(val).padStart(2, "0")}</div>
+              <div style={{ fontSize: 11, color: "#999" }}>{label}</div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+  return block.linkUrl && !expired ? (
+    <Link to={block.linkUrl} style={{ textDecoration: "none", color: "inherit", display: "block" }}>
+      {content}
+    </Link>
+  ) : (
+    content
   );
 }
