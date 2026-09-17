@@ -574,11 +574,181 @@ function OrdersTab({ orders, loading }) {
                     <div><span style={{ color: "#999" }}>收件人：</span>{o.recipient_name || o.customer_phone ? `${o.recipient_name || ""} ${o.recipient_phone || o.customer_phone || ""}` : "－"}</div>
                     <div><span style={{ color: "#999" }}>送貨地址：</span>{o.ship_address || "－"}</div>
                   </div>
+
+                  <OrderMessageThread orderId={o.id} memberId={member?.id} memberName={member?.name} />
                 </div>
               )}
             </div>
           );
         })}
+    </div>
+  );
+}
+
+// 訂單訊息：客人針對這筆訂單提出的問題，跟客服的往來對話。
+// 完全是自己系統內部的東西，不需要任何外部平台的API或審核。
+const ORDER_MSG_CATEGORIES = [
+  ["shipping", "物流問題"],
+  ["return", "退換貨"],
+  ["product", "商品瑕疵"],
+  ["payment", "付款問題"],
+  ["other", "其他"],
+];
+
+function OrderMessageThread({ orderId, memberId, memberName }) {
+  const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [category, setCategory] = useState("");
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!orderId) return;
+    fetch(`${SUPABASE_URL}/rest/v1/pos_order_messages?order_id=eq.${encodeURIComponent(orderId)}&select=*&order=created_at.asc`, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + SUPABASE_ANON_KEY },
+    })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => {
+        setMessages(Array.isArray(d) ? d : []);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [orderId]);
+
+  async function sendMessage() {
+    if (!text.trim()) return;
+    if (messages.length === 0 && !category) {
+      setError("請先選擇問題類型");
+      return;
+    }
+    setSending(true);
+    setError(null);
+    const newMsg = {
+      id: `OMSG-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      order_id: orderId,
+      member_id: memberId,
+      category: messages.length === 0 ? category : null,
+      sender: "customer",
+      sender_name: memberName || "客人",
+      message: text.trim(),
+      read_by_staff: false,
+      read_by_customer: true,
+    };
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/pos_order_messages`, {
+        method: "POST",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: "Bearer " + SUPABASE_ANON_KEY,
+          "Content-Type": "application/json",
+          Prefer: "return=representation",
+        },
+        body: JSON.stringify(newMsg),
+      });
+      if (!res.ok) {
+        setError("送出失敗，請稍後再試");
+        setSending(false);
+        return;
+      }
+      const saved = await res.json();
+      setMessages((prev) => [...prev, saved[0] || newMsg]);
+      setText("");
+      setSending(false);
+    } catch (e) {
+      setError("送出失敗，請稍後再試");
+      setSending(false);
+    }
+  }
+
+  if (loading) return null;
+
+  return (
+    <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid #eee" }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "#666", marginBottom: 10 }}>訂單問題／客服對話</div>
+
+      {messages.length === 0 && !showForm && (
+        <button
+          onClick={() => setShowForm(true)}
+          style={{ background: "none", border: "1px dashed #ccc", borderRadius: 6, padding: "8px 14px", color: "#666", fontSize: 12, cursor: "pointer" }}
+        >
+          💬 對這筆訂單有疑問？點此發問
+        </button>
+      )}
+
+      {messages.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
+          {messages[0]?.category && (
+            <div style={{ fontSize: 11, color: "#999" }}>
+              問題類型：{ORDER_MSG_CATEGORIES.find(([v]) => v === messages[0].category)?.[1] || messages[0].category}
+            </div>
+          )}
+          {messages.map((m) => (
+            <div
+              key={m.id}
+              style={{
+                alignSelf: m.sender === "customer" ? "flex-end" : "flex-start",
+                maxWidth: "80%",
+                background: m.sender === "customer" ? "#222" : "#f0f0f0",
+                color: m.sender === "customer" ? "#fff" : "#333",
+                borderRadius: 10,
+                padding: "8px 12px",
+                fontSize: 12,
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {m.sender === "staff" && <div style={{ fontSize: 10, color: "#999", marginBottom: 2 }}>客服 {m.sender_name || ""}</div>}
+              {m.message}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {(showForm || messages.length > 0) && (
+        <div>
+          {messages.length === 0 && (
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 11, color: "#999", marginBottom: 4 }}>問題類型</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {ORDER_MSG_CATEGORIES.map(([v, l]) => (
+                  <button
+                    key={v}
+                    onClick={() => setCategory(v)}
+                    style={{
+                      background: category === v ? "#222" : "#fff",
+                      color: category === v ? "#fff" : "#666",
+                      border: "1px solid " + (category === v ? "#222" : "#ddd"),
+                      borderRadius: 14,
+                      padding: "4px 10px",
+                      fontSize: 11,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 6 }}>
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="請輸入您的問題..."
+              style={{ flex: 1, minHeight: 50, boxSizing: "border-box", border: "1px solid #ddd", borderRadius: 6, padding: 8, fontSize: 12, resize: "vertical" }}
+            />
+            <button
+              onClick={sendMessage}
+              disabled={sending || !text.trim()}
+              style={{ background: "#222", color: "#fff", border: "none", borderRadius: 6, padding: "0 16px", fontSize: 12, cursor: "pointer", opacity: sending || !text.trim() ? 0.5 : 1 }}
+            >
+              送出
+            </button>
+          </div>
+          {error && <div style={{ color: "#c0392b", fontSize: 11, marginTop: 4 }}>{error}</div>}
+        </div>
+      )}
     </div>
   );
 }
