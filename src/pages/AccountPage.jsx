@@ -153,6 +153,7 @@ export default function AccountPage() {
           highlightOrderId={highlightOrderId}
           unreadReplyOrderIds={unreadReplyOrderIds}
           onMarkReplyRead={(orderId) => setUnreadReplyOrderIds((prev) => prev.filter((id) => id !== orderId))}
+          member={member}
         />
       )}
       {tab === "notifications" && (
@@ -554,7 +555,7 @@ const orderStatusLabel = {
   return: { text: "退貨", color: "#c0392b" },
 };
 
-function OrdersTab({ orders, loading, highlightOrderId, unreadReplyOrderIds = [], onMarkReplyRead }) {
+function OrdersTab({ orders, loading, highlightOrderId, unreadReplyOrderIds = [], onMarkReplyRead, member }) {
   const [expanded, setExpanded] = useState(null); // 目前展開明細的訂單id
 
   // 從通知點擊「查看訂單」過來時，自動展開對應的那筆訂單，
