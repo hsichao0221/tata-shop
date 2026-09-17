@@ -16,12 +16,26 @@ export default function AccountPage() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [levelSettings, setLevelSettings] = useState(null);
+  const [notifications, setNotifications] = useState([]);
+  const [highlightOrderId, setHighlightOrderId] = useState(null);
 
   useEffect(() => {
     if (!authLoading && !user) {
       navigate("/login");
     }
   }, [authLoading, user]);
+
+  // 讀取站內通知：ERP端觸發訂單狀態變化(例如已出貨)時，會把通知寫進pos_notifications，
+  // 這裡讀出來顯示給客人看，是這個功能的「接收端」畫面。
+  useEffect(() => {
+    if (!member?.id) return;
+    fetch(`${SUPABASE_URL}/rest/v1/pos_notifications?member_id=eq.${encodeURIComponent(member.id)}&select=*&order=created_at.desc`, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + SUPABASE_ANON_KEY },
+    })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setNotifications(Array.isArray(d) ? d : []))
+      .catch(() => setNotifications([]));
+  }, [member]);
 
   useEffect(() => {
     if (!user?.email) return;
@@ -62,9 +76,11 @@ export default function AccountPage() {
     { id: "credit", label: "商店購物金" },
     { id: "coupons", label: "優惠券" },
     { id: "orders", label: "訂單" },
+    { id: "notifications", label: "通知" },
     { id: "wishlist", label: "追蹤清單" },
     { id: "addresses", label: "地址簿" },
   ];
+  const unreadCount = notifications.filter((n) => !n.is_read).length;
 
   return (
     <div style={{ maxWidth: 760, margin: "0 auto", padding: "24px 16px" }}>
@@ -99,6 +115,11 @@ export default function AccountPage() {
             }}
           >
             {t.label}
+            {t.id === "notifications" && unreadCount > 0 && (
+              <span style={{ marginLeft: 5, background: "#c0392b", color: "#fff", borderRadius: 10, fontSize: 10, padding: "1px 6px", fontWeight: 700 }}>
+                {unreadCount}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -106,7 +127,17 @@ export default function AccountPage() {
       {tab === "profile" && <PersonalInfoTab user={user} member={member} updateEmail={updateEmail} updateMemberProfile={updateMemberProfile} />}
       {tab === "credit" && <StoreCreditTab member={member} />}
       {tab === "coupons" && <CouponsTab member={member} />}
-      {tab === "orders" && <OrdersTab orders={orders} loading={loading} />}
+      {tab === "orders" && <OrdersTab orders={orders} loading={loading} highlightOrderId={highlightOrderId} />}
+      {tab === "notifications" && (
+        <NotificationsTab
+          notifications={notifications}
+          setNotifications={setNotifications}
+          onGoToOrder={(orderId) => {
+            setHighlightOrderId(orderId);
+            setTab("orders");
+          }}
+        />
+      )}
       {tab === "wishlist" && <WishlistTab member={member} />}
       {tab === "addresses" && <AddressesTab member={member} />}
     </div>
@@ -273,14 +304,24 @@ function PersonalInfoTab({ user, member, updateEmail, updateMemberProfile }) {
 function OrderNotifPrefs({ member, updateMemberProfile }) {
   const [prefs, setPrefs] = useState(member?.notification_prefs || { email: true });
   const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState(null); // {type:'ok'|'error', text}
   const lineLinked = !!member?.channel_identities?.line;
 
   async function togglePref(key) {
+    const prevPrefs = prefs;
     const next = { ...prefs, [key]: !prefs[key] };
     setPrefs(next);
     setSaving(true);
-    await updateMemberProfile({ notification_prefs: next });
+    setFeedback(null);
+    const result = await updateMemberProfile({ notification_prefs: next });
     setSaving(false);
+    if (result?.error) {
+      setPrefs(prevPrefs); // 儲存失敗，把打勾狀態復原，避免畫面顯示跟資料庫實際不一致
+      setFeedback({ type: "error", text: "儲存失敗，請稍後再試" });
+    } else {
+      setFeedback({ type: "ok", text: "已儲存" });
+      setTimeout(() => setFeedback(null), 2000);
+    }
   }
 
   return (
@@ -302,6 +343,11 @@ function OrderNotifPrefs({ member, updateMemberProfile }) {
         <input type="checkbox" checked={!!prefs.inapp} disabled={saving} onChange={() => togglePref("inapp")} />
         站內通知（登入會員中心時顯示）
       </label>
+      {feedback && (
+        <div style={{ fontSize: 12, color: feedback.type === "error" ? "#c0392b" : "#2e7d32" }}>
+          {feedback.type === "error" ? "⚠ " : "✓ "}{feedback.text}
+        </div>
+      )}
     </div>
   );
 }
@@ -481,8 +527,14 @@ const orderStatusLabel = {
   return: { text: "退貨", color: "#c0392b" },
 };
 
-function OrdersTab({ orders, loading }) {
+function OrdersTab({ orders, loading, highlightOrderId }) {
   const [expanded, setExpanded] = useState(null); // 目前展開明細的訂單id
+
+  // 從通知點擊「查看訂單」過來時，自動展開對應的那筆訂單，
+  // 客人才能立刻看到並回覆訂單對話框，不用自己在清單裡找。
+  useEffect(() => {
+    if (highlightOrderId) setExpanded(highlightOrderId);
+  }, [highlightOrderId]);
 
   return (
     <div>
@@ -581,6 +633,55 @@ function OrdersTab({ orders, loading }) {
             </div>
           );
         })}
+    </div>
+  );
+}
+
+// 站內通知列表：顯示ERP端觸發的系統通知(例如已出貨)。這些是單向的事件通知，
+// 不在通知本身回覆；如果通知跟某筆訂單有關，點擊會直接跳到那筆訂單、展開對話框，
+// 客人可以在那裡接續提問/回覆，不用另外找。
+function NotificationsTab({ notifications, setNotifications, onGoToOrder }) {
+  async function openNotif(n) {
+    if (!n.is_read) {
+      setNotifications((prev) => prev.map((x) => (x.id === n.id ? { ...x, is_read: true } : x)));
+      fetch(`${SUPABASE_URL}/rest/v1/pos_notifications?id=eq.${n.id}`, {
+        method: "PATCH",
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + SUPABASE_ANON_KEY, "Content-Type": "application/json", Prefer: "return=minimal" },
+        body: JSON.stringify({ is_read: true }),
+      }).catch(() => {});
+    }
+    if (n.order_id) onGoToOrder(n.order_id);
+  }
+
+  if (notifications.length === 0) {
+    return <div style={{ textAlign: "center", padding: 40, color: "#999" }}>目前沒有任何通知</div>;
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {notifications.map((n) => (
+        <div
+          key={n.id}
+          onClick={() => openNotif(n)}
+          style={{
+            border: "1px solid " + (n.is_read ? "#eee" : "#222"),
+            background: n.is_read ? "#fff" : "#fafafa",
+            borderRadius: 8,
+            padding: "12px 14px",
+            cursor: n.order_id ? "pointer" : "default",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+            <span style={{ fontSize: 12, fontWeight: n.is_read ? 400 : 700, color: "#222" }}>
+              {!n.is_read && <span style={{ color: "#c0392b" }}>● </span>}
+              {n.order_id ? `訂單 ${n.order_id}` : "系統通知"}
+            </span>
+            <span style={{ fontSize: 11, color: "#999" }}>{new Date(n.created_at).toLocaleString("zh-TW")}</span>
+          </div>
+          <div style={{ fontSize: 13, color: "#444", whiteSpace: "pre-wrap" }}>{n.message}</div>
+          {n.order_id && <div style={{ fontSize: 11, color: "#999", marginTop: 6 }}>點擊查看訂單並回覆 →</div>}
+        </div>
+      ))}
     </div>
   );
 }
