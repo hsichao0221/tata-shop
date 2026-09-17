@@ -18,12 +18,26 @@ export default function AccountPage() {
   const [levelSettings, setLevelSettings] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [highlightOrderId, setHighlightOrderId] = useState(null);
+  const [unreadReplyOrderIds, setUnreadReplyOrderIds] = useState([]);
 
   useEffect(() => {
     if (!authLoading && !user) {
       navigate("/login");
     }
   }, [authLoading, user]);
+
+  // 讀取「客服已回覆、客人還沒看過」的訂單清單，讓「訂單」分頁能顯示未讀提示，
+  // 不用客人自己想到要回去翻每一筆訂單才會發現客服回覆了。
+  useEffect(() => {
+    if (!member?.id) return;
+    fetch(
+      `${SUPABASE_URL}/rest/v1/pos_order_messages?member_id=eq.${encodeURIComponent(member.id)}&sender=eq.staff&read_by_customer=eq.false&select=order_id`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + SUPABASE_ANON_KEY } }
+    )
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setUnreadReplyOrderIds([...new Set((Array.isArray(d) ? d : []).map((x) => x.order_id))]))
+      .catch(() => setUnreadReplyOrderIds([]));
+  }, [member]);
 
   // 讀取站內通知：ERP端觸發訂單狀態變化(例如已出貨)時，會把通知寫進pos_notifications，
   // 這裡讀出來顯示給客人看，是這個功能的「接收端」畫面。
@@ -120,6 +134,11 @@ export default function AccountPage() {
                 {unreadCount}
               </span>
             )}
+            {t.id === "orders" && unreadReplyOrderIds.length > 0 && (
+              <span style={{ marginLeft: 5, background: "#c0392b", color: "#fff", borderRadius: 10, fontSize: 10, padding: "1px 6px", fontWeight: 700 }}>
+                {unreadReplyOrderIds.length}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -127,7 +146,15 @@ export default function AccountPage() {
       {tab === "profile" && <PersonalInfoTab user={user} member={member} updateEmail={updateEmail} updateMemberProfile={updateMemberProfile} />}
       {tab === "credit" && <StoreCreditTab member={member} />}
       {tab === "coupons" && <CouponsTab member={member} />}
-      {tab === "orders" && <OrdersTab orders={orders} loading={loading} highlightOrderId={highlightOrderId} />}
+      {tab === "orders" && (
+        <OrdersTab
+          orders={orders}
+          loading={loading}
+          highlightOrderId={highlightOrderId}
+          unreadReplyOrderIds={unreadReplyOrderIds}
+          onMarkReplyRead={(orderId) => setUnreadReplyOrderIds((prev) => prev.filter((id) => id !== orderId))}
+        />
+      )}
       {tab === "notifications" && (
         <NotificationsTab
           notifications={notifications}
@@ -527,7 +554,7 @@ const orderStatusLabel = {
   return: { text: "退貨", color: "#c0392b" },
 };
 
-function OrdersTab({ orders, loading, highlightOrderId }) {
+function OrdersTab({ orders, loading, highlightOrderId, unreadReplyOrderIds = [], onMarkReplyRead }) {
   const [expanded, setExpanded] = useState(null); // 目前展開明細的訂單id
 
   // 從通知點擊「查看訂單」過來時，自動展開對應的那筆訂單，
@@ -535,6 +562,24 @@ function OrdersTab({ orders, loading, highlightOrderId }) {
   useEffect(() => {
     if (highlightOrderId) setExpanded(highlightOrderId);
   }, [highlightOrderId]);
+
+  function toggleExpand(orderId) {
+    const next = expanded === orderId ? null : orderId;
+    setExpanded(next);
+    // 展開時，如果這筆訂單有未讀的客服回覆，標記成已讀，
+    // 這樣客人下次回來看，未讀提示就會正確消失，不會一直卡在那裡。
+    if (next && unreadReplyOrderIds.includes(orderId)) {
+      fetch(
+        `${SUPABASE_URL}/rest/v1/pos_order_messages?order_id=eq.${encodeURIComponent(orderId)}&sender=eq.staff&read_by_customer=eq.false`,
+        {
+          method: "PATCH",
+          headers: { apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + SUPABASE_ANON_KEY, "Content-Type": "application/json", Prefer: "return=minimal" },
+          body: JSON.stringify({ read_by_customer: true }),
+        }
+      ).catch(() => {});
+      onMarkReplyRead?.(orderId);
+    }
+  }
 
   return (
     <div>
@@ -546,15 +591,19 @@ function OrdersTab({ orders, loading, highlightOrderId }) {
         orders.map((o) => {
           const status = orderStatusLabel[o.order_status] || orderStatusLabel[o.type] || { text: o.type, color: "#999" };
           const isOpen = expanded === o.id;
+          const hasUnreadReply = unreadReplyOrderIds.includes(o.id);
           return (
-            <div key={o.id} style={{ border: "1px solid #eee", borderRadius: 8, marginBottom: 12, overflow: "hidden" }}>
+            <div key={o.id} style={{ border: "1px solid " + (hasUnreadReply ? "#222" : "#eee"), borderRadius: 8, marginBottom: 12, overflow: "hidden" }}>
               <div
-                onClick={() => setExpanded(isOpen ? null : o.id)}
+                onClick={() => toggleExpand(o.id)}
                 style={{ padding: "14px 16px", cursor: "pointer" }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
                   <span style={{ fontFamily: "monospace", fontSize: 13, color: "#666" }}>{o.id}</span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: status.color }}>{status.text}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: status.color }}>
+                    {status.text}
+                    {hasUnreadReply && <span style={{ marginLeft: 6, color: "#c0392b" }}>● 客服已回覆</span>}
+                  </span>
                 </div>
                 <div style={{ color: "#999", fontSize: 12, marginBottom: 10 }}>{o.date} {o.time}</div>
 
