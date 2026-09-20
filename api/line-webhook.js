@@ -1,18 +1,22 @@
-// LINE Messaging API串接：處理兩個方向的訊息。
+// LINE串接：處理三件事。
 // (1) LINE平台POST過來的：客人傳訊息給官方帳號時，LINE會呼叫這個網址(要設定在
-//     LINE Developers後台的Webhook URL)，這裡驗證簽章、存進pos_social_messages、
-//     嘗試對應到既有會員(用channel_identities.line欄位比對)。
+//     LINE Developers後台Messaging API頻道的Webhook URL)，這裡驗證簽章、存進
+//     pos_social_messages、嘗試對應到既有會員(用channel_identities.line欄位比對)。
 // (2) ERP呼叫這裡(action=send-reply)：客服在訊息中心回覆時，透過LINE的push API
 //     真正把訊息送到客人的LINE，成功後也把這則回覆存進對話紀錄。
+// (3) LINE Login帳號綁定：客人在官網點「連結LINE」→ POST action=get-login-url
+//     取得授權網址並跳轉 → 客人在LINE同意 → LINE導回這裡(GET ?action=login-callback)
+//     → 用授權碼換使用者的LINE userId → 寫回該會員的channel_identities.line。
 //
-// 憑證(頻道存取權杖/頻道密鑰)不寫死在程式碼裡，是從erp_settings讀取，
-// 每個使用這套系統的品牌都在ERP後台的「管道設定」自己填自己的憑證，符合公版設計。
+// 所有憑證(頻道存取權杖/頻道密鑰/Login Channel ID與Secret)不寫死在程式碼裡，
+// 是從erp_settings讀取，每個使用這套系統的品牌都在ERP後台的「管道設定」
+// 自己填自己的憑證，符合公版設計。
 
 import crypto from "crypto";
 
 function setCors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Line-Signature");
 }
 
@@ -22,7 +26,7 @@ export default async function handler(req, res) {
     res.status(200).end();
     return;
   }
-  if (req.method !== "POST") {
+  if (req.method !== "POST" && req.method !== "GET") {
     res.status(405).json({ error: "Method not allowed" });
     return;
   }
@@ -50,6 +54,104 @@ export default async function handler(req, res) {
     const r = await sbFetch("/erp_settings?key=eq.lineConfig&select=value");
     const d = r.ok ? await r.json().catch(() => []) : [];
     return d?.[0]?.value || null;
+  }
+
+  async function getLineLoginConfig() {
+    const r = await sbFetch("/erp_settings?key=eq.lineLoginConfig&select=value");
+    const d = r.ok ? await r.json().catch(() => []) : [];
+    return d?.[0]?.value || null;
+  }
+
+  const baseUrl = `https://${req.headers.host}`;
+  const CALLBACK_URL = `${baseUrl}/api/line-webhook?action=login-callback`;
+
+  // ── 官網呼叫：客人點「連結LINE」，取得授權網址讓前端跳轉 ────────────
+  if (req.method === "POST" && req.body?.action === "get-login-url") {
+    try {
+      const { memberId } = req.body;
+      if (!memberId) {
+        res.status(400).json({ error: "缺少memberId" });
+        return;
+      }
+      const loginConfig = await getLineLoginConfig();
+      if (!loginConfig?.loginChannelId) {
+        res.status(500).json({ error: "尚未設定LINE Login，請聯繫客服" });
+        return;
+      }
+      // state帶入memberId(誰要連結)+隨機亂數(避免被預測/重放)，LINE導回來時原樣帶回，
+      // 用來知道這次授權完成後要更新哪個會員的資料。
+      const nonce = crypto.randomBytes(8).toString("hex");
+      const state = Buffer.from(`${memberId}:${nonce}`).toString("base64url");
+      const authUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${encodeURIComponent(loginConfig.loginChannelId)}&redirect_uri=${encodeURIComponent(CALLBACK_URL)}&state=${state}&scope=${encodeURIComponent("profile openid")}`;
+      res.status(200).json({ authUrl });
+    } catch (e) {
+      console.error("get-login-url error:", e);
+      res.status(500).json({ error: String(e) });
+    }
+    return;
+  }
+
+  // ── LINE平台呼叫：客人在LINE同意授權後導回這裡，用授權碼換userId寫回會員資料 ──
+  if (req.method === "GET" && req.query?.action === "login-callback") {
+    const redirectBack = (status) => {
+      res.writeHead(302, { Location: `${baseUrl}/account?lineLink=${status}` });
+      res.end();
+    };
+    try {
+      const { code, state } = req.query;
+      if (!code || !state) { redirectBack("error"); return; }
+      let memberId;
+      try {
+        const decoded = Buffer.from(state, "base64url").toString("utf8");
+        memberId = decoded.split(":")[0];
+      } catch { redirectBack("error"); return; }
+      if (!memberId) { redirectBack("error"); return; }
+
+      const loginConfig = await getLineLoginConfig();
+      if (!loginConfig?.loginChannelId || !loginConfig?.loginChannelSecret) { redirectBack("error"); return; }
+
+      // 用授權碼換access token
+      const tokenRes = await fetch("https://api.line.me/oauth2/v2.1/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "authorization_code",
+          code,
+          redirect_uri: CALLBACK_URL,
+          client_id: loginConfig.loginChannelId,
+          client_secret: loginConfig.loginChannelSecret,
+        }),
+      });
+      if (!tokenRes.ok) { redirectBack("error"); return; }
+      const tokenData = await tokenRes.json();
+
+      // 用access token拿使用者的LINE個人資料(裡面的userId，就是跟Messaging API共用的那組ID，
+      // 前提是Login頻道跟Messaging API頻道在同一個Provider底下)
+      const profileRes = await fetch("https://api.line.me/v2/profile", {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      });
+      if (!profileRes.ok) { redirectBack("error"); return; }
+      const profile = await profileRes.json();
+      if (!profile.userId) { redirectBack("error"); return; }
+
+      // 讀出這個會員原本的channel_identities，只更新line這個欄位，不動到其他管道(例如未來的Facebook)
+      const memRes = await sbFetch(`/pos_members?id=eq.${encodeURIComponent(memberId)}&select=channel_identities`);
+      const memData = memRes.ok ? (await memRes.json().catch(() => []))?.[0] : null;
+      const nextIdentities = { ...(memData?.channel_identities || {}), line: profile.userId };
+
+      const updateRes = await sbFetch(`/pos_members?id=eq.${encodeURIComponent(memberId)}`, {
+        method: "PATCH",
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({ channel_identities: nextIdentities }),
+      });
+      if (!updateRes.ok) { redirectBack("error"); return; }
+
+      redirectBack("success");
+    } catch (e) {
+      console.error("login-callback error:", e);
+      redirectBack("error");
+    }
+    return;
   }
 
   // ── ERP端叫用：發送客服回覆給客人的LINE ──────────────────────────
@@ -101,7 +203,13 @@ export default async function handler(req, res) {
     return;
   }
 
-  // ── LINE平台叫用：收到客人傳來的訊息(webhook) ─────────────────────
+  // ── LINE平台叫用：收到客人傳來的訊息(webhook，一定是POST) ──────────
+  if (req.method !== "POST") {
+    // 不是POST、也不符合上面任何一種已知的GET用途(login-callback)，
+    // 安全地回200結束，不繼續往下處理。
+    res.status(200).json({ ok: true });
+    return;
+  }
   try {
     const config = await getLineConfig();
     if (!config?.channelSecret) {
