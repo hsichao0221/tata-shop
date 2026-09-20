@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from "./AuthContext.jsx";
 import { LanguageProvider, useLanguage } from "./LanguageContext.jsx";
 import Footer from "./components/Footer.jsx";
 import MenuNav from "./components/MenuNav.jsx";
+import ContactWidget from "./components/ContactWidget.jsx";
 import HomePage from "./pages/HomePage.jsx";
 import DynamicPage from "./pages/DynamicPage.jsx";
 import ProductListPage from "./pages/ProductListPage.jsx";
@@ -191,6 +192,7 @@ export default function App() {
               <Route path="/coupon-center" element={<CouponCenterPage />} />
             </Routes>
             <Footer />
+            <ContactWidget />
           </BrowserRouter>
         </CartProvider>
       </AuthProvider>
