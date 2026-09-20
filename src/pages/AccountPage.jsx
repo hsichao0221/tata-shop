@@ -19,6 +19,20 @@ export default function AccountPage() {
   const [notifications, setNotifications] = useState([]);
   const [highlightOrderId, setHighlightOrderId] = useState(null);
   const [unreadReplyOrderIds, setUnreadReplyOrderIds] = useState([]);
+  const [lineLinkResult, setLineLinkResult] = useState(null); // 從LINE授權導回來後的結果訊息
+
+  // 從LINE Login導回來時，網址會帶?lineLink=success/error，讀取後顯示明確結果，
+  // 並清掉網址上的參數，避免重新整理或返回上一頁時又跳出同一個訊息。
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get("lineLink");
+    if (result) {
+      setLineLinkResult(result);
+      setTab("profile");
+      window.history.replaceState({}, "", window.location.pathname);
+      setTimeout(() => setLineLinkResult(null), 5000);
+    }
+  }, []);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -110,6 +124,16 @@ export default function AccountPage() {
         <button onClick={signOut} style={btnSecondary}>登出</button>
       </div>
 
+      {lineLinkResult && (
+        <div style={{
+          background: lineLinkResult === "success" ? "#e8f5e9" : "#fdecea",
+          color: lineLinkResult === "success" ? "#2e7d32" : "#c0392b",
+          border: `1px solid ${lineLinkResult === "success" ? "#2e7d32" : "#c0392b"}33`,
+          borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 13,
+        }}>
+          {lineLinkResult === "success" ? "✓ LINE 已成功連結，之後可以收到LINE通知了" : "⚠ LINE 連結失敗，請稍後再試一次"}
+        </div>
+      )}
       <UpgradeBanner member={member} levelSettings={levelSettings} />
 
       <div style={{ display: "flex", gap: 4, margin: "20px 0", borderBottom: "1px solid #eee", flexWrap: "wrap" }}>
@@ -333,6 +357,8 @@ function OrderNotifPrefs({ member, updateMemberProfile }) {
   const [prefs, setPrefs] = useState(member?.notification_prefs || { email: true });
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState(null); // {type:'ok'|'error', text}
+  const [linking, setLinking] = useState(false);
+  const [linkError, setLinkError] = useState(null);
   const lineLinked = !!member?.channel_identities?.line;
 
   async function togglePref(key) {
@@ -352,6 +378,28 @@ function OrderNotifPrefs({ member, updateMemberProfile }) {
     }
   }
 
+  async function handleLinkLine() {
+    setLinking(true);
+    setLinkError(null);
+    try {
+      const res = await fetch(`/api/line-webhook`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "get-login-url", memberId: member?.id }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.authUrl) {
+        setLinking(false);
+        setLinkError(data.error || "無法連結LINE，請稍後再試");
+        return;
+      }
+      window.location.href = data.authUrl; // 跳轉到LINE的授權畫面，同意後會導回本頁
+    } catch (e) {
+      setLinking(false);
+      setLinkError("無法連結LINE，請稍後再試");
+    }
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#444", cursor: "pointer" }}>
@@ -364,9 +412,13 @@ function OrderNotifPrefs({ member, updateMemberProfile }) {
         {lineLinked ? (
           <span style={{ fontSize: 11, color: "#2e7d32" }}>已連結</span>
         ) : (
-          <span style={{ fontSize: 11, color: "#999" }}>（尚未連結，即將開放）</span>
+          <button onClick={handleLinkLine} disabled={linking}
+            style={{ fontSize: 11, color: "#06C755", background: "none", border: "1px solid #06C755", borderRadius: 12, padding: "2px 10px", cursor: "pointer", opacity: linking ? 0.6 : 1 }}>
+            {linking ? "連結中..." : "連結LINE"}
+          </button>
         )}
       </div>
+      {linkError && <div style={{ fontSize: 11, color: "#c0392b", marginTop: -6 }}>⚠ {linkError}</div>}
       <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#444", cursor: "pointer" }}>
         <input type="checkbox" checked={!!prefs.inapp} disabled={saving} onChange={() => togglePref("inapp")} />
         站內通知（登入會員中心時顯示）
