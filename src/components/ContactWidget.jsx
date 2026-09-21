@@ -16,42 +16,19 @@ const CHANNEL_META = {
 export default function ContactWidget() {
   const [links, setLinks] = useState(null);
   const [open, setOpen] = useState(false);
-  const [debugInfo, setDebugInfo] = useState(""); // 暫時性除錯訊息，直接顯示在畫面上，方便手機排查，抓到問題後會移除
 
   useEffect(() => {
-    const url = `${SUPABASE_URL}/rest/v1/erp_settings?key=eq.quickContactLinks&select=value`;
-    fetch(url, {
+    fetch(`${SUPABASE_URL}/rest/v1/erp_settings?key=eq.quickContactLinks&select=value`, {
       headers: { apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + SUPABASE_ANON_KEY },
     })
-      .then((r) => {
-        if (!r.ok) {
-          return r.text().then((t) => {
-            setDebugInfo(`狀態碼:${r.status} 內容:${t}`);
-            return [];
-          });
-        }
-        return r.json();
-      })
-      .then((d) => {
-        const value = d?.[0]?.value || {};
-        setDebugInfo((prev) => prev || `狀態:成功 資料:${JSON.stringify(d)} 解析出:${JSON.stringify(value)}`);
-        setLinks(value);
-      })
-      .catch((e) => {
-        setDebugInfo(`錯誤:${String(e)}`);
-        setLinks({});
-      });
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setLinks(d?.[0]?.value || {}))
+      .catch(() => setLinks({}));
   }, []);
 
-  const debugBadge = debugInfo ? (
-    <div style={{ position: "fixed", left: 8, bottom: 8, zIndex: 9999, background: "#000", color: "#0f0", fontSize: 10, padding: "6px 8px", borderRadius: 6, maxWidth: "90vw", wordBreak: "break-all", fontFamily: "monospace" }}>
-      [暫時除錯] {debugInfo}
-    </div>
-  ) : null;
-
-  if (!links) return debugBadge;
+  if (!links) return null;
   const channels = Object.keys(CHANNEL_META).filter((k) => links[k]);
-  if (channels.length === 0) return debugBadge;
+  if (channels.length === 0) return null;
 
   function openChannel(key) {
     const url = links[key];
@@ -64,8 +41,6 @@ export default function ContactWidget() {
   }
 
   return (
-    <>
-    {debugBadge}
     <div style={{ position: "fixed", right: 20, bottom: 20, zIndex: 999 }}>
       {open && (
         <div
@@ -126,6 +101,5 @@ export default function ContactWidget() {
         {open ? "✕" : "💬"}
       </button>
     </div>
-    </>
   );
 }
