@@ -69,10 +69,16 @@ export async function fetchAllProducts() {
   return Array.isArray(p) ? p : [];
 }
 
-// 只取「上架中」的商品（active === true 或舊資料沒有 active 欄位時暫時保留顯示，
-// 與 ERP 那邊 activeProducts 的判斷邏輯一致，確保兩邊行為對齊）
+// 只取「網店有上架」的商品——原本用active(綜合欄位，只要實體店或網店「任一邊」有上架就是true)
+// 來判斷，會導致「只在實體店上架、網店已下架」的商品，因為active仍然是true，照樣出現在官網前台，
+// 客人看得到甚至還能下單，但這件商品在ERP後台明明已經設定成「網店下架」，兩邊行為完全不一致。
+// 改成直接檢查onlineStatus這個網店專屬的狀態欄位，只有這個明確是"on"(或舊資料完全沒有這個欄位時，
+// 才退回active的舊判斷方式保持相容)才顯示，跟ERP後台「網店上架/網店下架」的設定真正一致。
 export function filterActiveProducts(products) {
-  return products.filter((p) => p.active === true || p.active === undefined);
+  return products.filter((p) => {
+    if (p.onlineStatus !== undefined) return p.onlineStatus === "on";
+    return p.active === true || p.active === undefined;
+  });
 }
 
 // 首頁「精選新品」用的輕量版讀取：只抓第一個批次（最多300筆），
