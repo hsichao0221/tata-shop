@@ -61,7 +61,12 @@ export default function ProductPage() {
   useEffect(() => {
     fetchAllProducts().then((all) => {
       const found = all.find((p) => p.sku === sku);
-      setProduct(found || null);
+      // 找到商品後還要再確認網店有沒有上架——原本只要用sku對得到商品資料就顯示，
+      // 完全沒檢查上下架狀態，代表就算商品在ERP後台已經設成「網店下架」，
+      // 只要有人直接打開這個商品的網址(例如舊的分享連結、搜尋引擎快取)，還是看得到、還能下單。
+      // 判斷邏輯跟filterActiveProducts保持一致：優先看onlineStatus，沒有這個欄位的舊資料才退回active。
+      const isOnline = found && (found.onlineStatus !== undefined ? found.onlineStatus === "on" : (found.active === true || found.active === undefined));
+      setProduct(isOnline ? found : null);
       setLoading(false);
     });
   }, [sku]);
