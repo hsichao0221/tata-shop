@@ -2,8 +2,13 @@
 // 加密邏輯已用綠界官方文件提供的測試範例完整驗證正確(AES-128-CBC, PKCS7 padding)。
 // 官網跟門市可能各自有獨立的字軌(避免號碼衝突)，用ProductServiceID區分，
 // 對應綠界後台「字軌分類管理」設定的產品服務別代號。
+// 開立結果(成功跟失敗都會)寫進pos_invoices這張表，是「發票記錄」「作廢/折讓」「對帳報表」
+// 這幾個ERP後台功能唯一的資料來源——原本開票完全沒有存下任何紀錄，這是補上的第一步。
 
 import crypto from "crypto";
+
+const SUPABASE_URL = "https://vsqdzntwavegnwctzzgx.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZzcWR6bnR3YXZlZ253Y3R6emd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMjEyOTMsImV4cCI6MjA5Mzc5NzI5M30.vkZTXD-XnDH07AYrYTA0k8quTWInwLN_s4oMr70u7nY";
 
 const PROD_URL = "https://einvoice.ecpay.com.tw/B2CInvoice/Issue";
 const STAGE_URL = "https://einvoice-stage.ecpay.com.tw/B2CInvoice/Issue";
@@ -29,6 +34,27 @@ function aesDecrypt(encryptedData, hashKey, hashIV) {
   return JSON.parse(decodeURIComponent(decrypted));
 }
 
+// 把開票結果(不管成功失敗)寫進pos_invoices，失敗也要記錄下來，方便之後在「發票記錄」裡
+// 追查「哪些訂單想開票但沒開成功」，不是只存成功的案例。任何寫入失敗都只console.warn、
+// 不會讓整支API失敗，避免資料庫寫入問題影響到「發票已經跟綠界成功開立」這個更重要的結果。
+async function saveInvoiceRecord(row) {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/pos_invoices`, {
+      method: "POST",
+      headers: {
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": "Bearer " + SUPABASE_ANON_KEY,
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal",
+      },
+      body: JSON.stringify(row),
+    });
+    if (!r.ok) console.warn("寫入pos_invoices失敗:", await r.text());
+  } catch (e) {
+    console.warn("寫入pos_invoices發生例外:", e);
+  }
+}
+
 function setCors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -52,7 +78,10 @@ export default async function handler(req, res) {
 
   try {
     const {
-      orderId, // 用來組成RelateNumber(唯一值)
+      orderId, // 用來組成RelateNumber(唯一值)，也是pos_invoices.order_id
+      source, // 'pos' 門市自行收款 / 'web' 官網結帳，沒傳預設當作web(向下相容既有呼叫端)
+      storeId,
+      storeName,
       items, // [{name, qty, unit, price, amount}]
       totalAmount,
       invoiceType, // "print" | "carrier" | "donation"
@@ -142,16 +171,42 @@ export default async function handler(req, res) {
     });
 
     const ecpayJson = await ecpayRes.json();
+    const baseRecord = {
+      order_id: (orderId || "").toString(),
+      source: source === "pos" ? "pos" : "web",
+      store_id: storeId || (source === "pos" ? null : "web"),
+      store_name: storeName || (source === "pos" ? null : "官網"),
+      total_amount: totalAmount,
+      invoice_type: invoiceType || "print",
+      carrier_type: CarrierTypeFinal || null,
+      carrier_num: CarrierNumFinal || null,
+      buyer_name: buyerName || null,
+      buyer_identifier: buyerIdentifier || null,
+      buyer_email: buyerEmail || null,
+      items: items,
+    };
     if (ecpayJson.TransCode !== 1) {
-      res.status(500).json({ error: "呼叫綠界發票API失敗：" + (ecpayJson.TransMsg || "未知錯誤") });
+      const errMsg = "呼叫綠界發票API失敗：" + (ecpayJson.TransMsg || "未知錯誤");
+      await saveInvoiceRecord({ ...baseRecord, status: "failed", error_message: errMsg });
+      res.status(500).json({ error: errMsg });
       return;
     }
 
     const resultData = aesDecrypt(ecpayJson.Data, HASH_KEY, HASH_IV);
     if (resultData.RtnCode !== 1) {
-      res.status(200).json({ success: false, error: resultData.RtnMsg || "發票開立失敗" });
+      const errMsg = resultData.RtnMsg || "發票開立失敗";
+      await saveInvoiceRecord({ ...baseRecord, status: "failed", error_message: errMsg });
+      res.status(200).json({ success: false, error: errMsg });
       return;
     }
+
+    await saveInvoiceRecord({
+      ...baseRecord,
+      status: "issued",
+      invoice_no: resultData.InvoiceNo,
+      invoice_date: resultData.InvoiceDate,
+      random_number: resultData.RandomNumber,
+    });
 
     res.status(200).json({
       success: true,
