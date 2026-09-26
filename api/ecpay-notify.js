@@ -208,6 +208,7 @@ export default async function handler(req, res) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               orderId: data.MerchantTradeNo,
+              source: "web",
               items: (order.items || []).map((i) => ({ name: i.name, qty: i.qty, unit: "件", price: i.price, amount: i.price * i.qty })),
               totalAmount: order.total,
               invoiceType: "print",
