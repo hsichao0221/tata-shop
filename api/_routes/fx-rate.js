@@ -7,7 +7,7 @@
 //   spotSell(即期賣出)＝銀行賣人民幣給你的價格，付款給大陸賣家等於是在「買入人民幣」，所以用賣出價。
 //   rateDate可能比requestedDate早：指定日期如果是假日、或當天還沒收盤，台銀沒有那一天的資料，
 //   會往前找最近一個有資料的營業日(最多往前7天)，並把「實際用的是哪一天」回傳，不會假裝是當天的匯率。
-import { parseBotCsvRate } from "./_fxParse.js";
+import { parseBotCsvRate } from "../_fxParse.js";
 
 const BOT_CSV = "https://rate.bot.com.tw/xrt/flcsv/0/";
 
