@@ -45,14 +45,16 @@ export default async function handler(req, res) {
   if (date > today) date = today; // 未來日期沒有匯率可查，當成今天
 
   const started = Date.now();
+  let blocked = false;
   const detail = []; // 每一天失敗的原因，查不到時一起回傳，方便判斷是被台銀擋、逾時還是格式變了
   for (let i = 0; i <= 7; i++) {
     if (Date.now() - started > 8000) break; // 函式有執行時間上限，不要把整個請求拖到被砍掉
     const d = addDays(date, -i);
     try {
       const r = await fetchWithTimeout(BOT_CSV + d, 4000);
-      if (!r.ok) { detail.push(`${d}: HTTP ${r.status}`); continue; }
+      if (!r.ok) { detail.push(`${d}: HTTP ${r.status}`); blocked = true; break; }
       const text = await r.text();
+      if (/^\s*</.test(text)) { detail.push(`${d}: 台銀回傳網頁而非資料(疑似擋雲端主機)`); blocked = true; break; }
       const rate = parseBotCsvRate(text, "CNY");
       if (!rate) { detail.push(`${d}: 解析失敗(長度${text.length}，開頭:${text.slice(0, 40).replace(/\s+/g, " ")})`); continue; }
       res.setHeader("Cache-Control", d < today ? "public, s-maxage=86400, stale-while-revalidate=604800" : "public, s-maxage=300");
@@ -64,6 +66,27 @@ export default async function handler(req, res) {
     } catch (e) {
       // 單一天逾時或連線失敗：換前一天再試，不整個放棄
       detail.push(`${d}: ${e?.name || "錯誤"} ${String(e?.message || "").slice(0, 80)}`);
+    }
+  }
+  // 台銀查不到或擋雲端主機時，改用公開匯率(市場中間價)備援，並在 source 如實標示，不冒充台銀牌告
+  for (let i = 0; i <= 3; i++) {
+    const d = addDays(date, -i);
+    try {
+      const r = await fetchWithTimeout(`https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@${d}/v1/currencies/cny.json`, 4000);
+      if (!r.ok) { detail.push(`備援${d}: HTTP ${r.status}`); continue; }
+      const j = await r.json();
+      const v = Number(j?.cny?.twd);
+      if (!(v > 0)) { detail.push(`備援${d}: 無twd資料`); continue; }
+      const rate = Math.round(v * 10000) / 10000;
+      res.setHeader("Cache-Control", d < today ? "public, s-maxage=86400" : "public, s-maxage=300");
+      res.status(200).json({
+        ok: true, currency: "CNY", requestedDate: date, rateDate: d, fallback: true,
+        source: "市場中間價(台銀牌告暫時無法取得，非銀行賣出價，約差0.3%)",
+        spotSell: rate, cashSell: rate, spotBuy: rate, cashBuy: rate,
+      });
+      return;
+    } catch (e) {
+      detail.push(`備援${d}: ${e?.name || "錯誤"}`);
     }
   }
   res.status(404).json({ ok: false, error: `查不到 ${date} 前後的人民幣牌告匯率`, detail });
