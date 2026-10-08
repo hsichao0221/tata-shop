@@ -7,6 +7,9 @@ import einvoiceAllowance from "./_routes/einvoice-allowance.js";
 import einvoiceVoid from "./_routes/einvoice-void.js";
 import lineBroadcast from "./_routes/line-broadcast.js";
 import translate from "./_routes/translate.js";
+import domain from "./_routes/domain.js";
+import sendBroadcastEmail from "./_routes/send-broadcast-email.js";
+import supabaseConfig from "./_routes/supabase-config.js";
 
 // 白名單：只有這裡列出的名稱才會被執行，路由名稱不會被拿去組檔案路徑。
 const ROUTES = {
@@ -15,6 +18,9 @@ const ROUTES = {
   "einvoice-void": einvoiceVoid,
   "line-broadcast": lineBroadcast,
   "translate": translate,
+  "domain": domain,
+  "send-broadcast-email": sendBroadcastEmail,
+  "supabase-config": supabaseConfig,
 };
 
 function pickRoute(req) {

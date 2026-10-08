@@ -1,11 +1,44 @@
 {
   "rewrites": [
-    { "source": "/api/fx-rate", "destination": "/api/router?route=fx-rate" },
-    { "source": "/api/einvoice-allowance", "destination": "/api/router?route=einvoice-allowance" },
-    { "source": "/api/einvoice-void", "destination": "/api/router?route=einvoice-void" },
-    { "source": "/api/line-broadcast", "destination": "/api/router?route=line-broadcast" },
-    { "source": "/api/translate", "destination": "/api/router?route=translate" },
-    { "source": "/api/router-probe", "destination": "/api/router?route=router-probe" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/api/fx-rate",
+      "destination": "/api/router?route=fx-rate"
+    },
+    {
+      "source": "/api/einvoice-allowance",
+      "destination": "/api/router?route=einvoice-allowance"
+    },
+    {
+      "source": "/api/einvoice-void",
+      "destination": "/api/router?route=einvoice-void"
+    },
+    {
+      "source": "/api/line-broadcast",
+      "destination": "/api/router?route=line-broadcast"
+    },
+    {
+      "source": "/api/translate",
+      "destination": "/api/router?route=translate"
+    },
+    {
+      "source": "/api/router-probe",
+      "destination": "/api/router?route=router-probe"
+    },
+    {
+      "source": "/api/domain",
+      "destination": "/api/router?route=domain"
+    },
+    {
+      "source": "/api/send-broadcast-email",
+      "destination": "/api/router?route=send-broadcast-email"
+    },
+    {
+      "source": "/api/supabase-config",
+      "destination": "/api/router?route=supabase-config"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ]
 }
