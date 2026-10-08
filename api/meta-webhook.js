@@ -15,6 +15,32 @@
 
 import crypto from "crypto";
 
+// 關掉Vercel自動解析body：Meta的簽章是對「原始請求內容」算的，重新JSON.stringify會跟Meta送來的
+// 原文不一致(例如中文/表情符號Meta會寫成\\uXXXX跳脫碼)，簽章就永遠對不上、含中文的訊息全被誤擋。
+// 所以這裡自己讀原始內容來驗簽，再自己解析成JSON。
+export const config = { api: { bodyParser: false } };
+
+async function readRawBody(req) {
+  if (Buffer.isBuffer(req.body)) return req.body;
+  if (typeof req.body === "string") return Buffer.from(req.body, "utf8");
+  if (req.readable && !req.readableEnded) {
+    const chunks = [];
+    for await (const c of req) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
+    return Buffer.concat(chunks);
+  }
+  return null; // 已被平台解析過，拿不到原文
+}
+
+// 備援：萬一平台已經把body解析掉拿不到原文，改用Meta的跳脫規則(非ASCII一律寫成小寫\uxxxx)重組。
+function metaEscapedJson(obj) {
+  return JSON.stringify(obj).replace(/[\u0080-\uffff]/g, (ch) => "\\u" + ch.charCodeAt(0).toString(16).padStart(4, "0"));
+}
+
+function safeEqual(a, b) {
+  const x = Buffer.from(String(a || "")), y = Buffer.from(String(b || ""));
+  return x.length === y.length && crypto.timingSafeEqual(x, y);
+}
+
 function setCors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -28,6 +54,20 @@ export default async function handler(req, res) {
     res.status(405).json({ error: "Method not allowed" });
     return;
   }
+
+  // 先取原始內容再解析：POST用，GET(驗證訂閱)不需要
+  let rawBuf = null;
+  let body = req.body;
+  if (req.method === "POST") {
+    try {
+      rawBuf = await readRawBody(req);
+      if (rawBuf) body = rawBuf.length ? JSON.parse(rawBuf.toString("utf8")) : {};
+    } catch (e) {
+      res.status(200).json({ ok: true }); // 格式不是JSON，不處理也不讓Meta一直重試
+      return;
+    }
+  }
+  body = body || {};
 
   const SUPABASE_URL = process.env.SUPABASE_URL || "https://vsqdzntwavegnwctzzgx.supabase.co";
   const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -55,9 +95,9 @@ export default async function handler(req, res) {
   }
 
   // ── ERP端叫用：發送客服回覆給客人的Messenger/Instagram ──────────────────
-  if (req.method === "POST" && req.body?.action === "send-reply") {
+  if (req.method === "POST" && body?.action === "send-reply") {
     try {
-      const { externalUserId, message, senderName, channel } = req.body;
+      const { externalUserId, message, senderName, channel } = body;
       if (!externalUserId || !message) {
         res.status(400).json({ error: "缺少必要參數(externalUserId/message)" });
         return;
@@ -135,18 +175,20 @@ export default async function handler(req, res) {
 
     // 驗證簽章：確認這個請求真的是Meta平台送來的，不是別人偽造的
     const signature = req.headers["x-hub-signature-256"];
-    const rawBody = JSON.stringify(req.body);
-    const hash = "sha256=" + crypto.createHmac("sha256", config.appSecret).update(rawBody).digest("hex");
-    if (signature !== hash) {
+    const sign = (payload) => "sha256=" + crypto.createHmac("sha256", config.appSecret).update(payload).digest("hex");
+    const valid = rawBuf
+      ? safeEqual(signature, sign(rawBuf))
+      : (safeEqual(signature, sign(metaEscapedJson(body))) || safeEqual(signature, sign(JSON.stringify(body))));
+    if (!valid) {
       console.warn("meta-webhook: 簽章驗證失敗，忽略此請求");
       res.status(200).json({ ok: true });
       return;
     }
 
     // object欄位分辨這是Facebook粉專("page")還是Instagram("instagram")送來的事件
-    const isInstagram = req.body?.object === "instagram";
+    const isInstagram = body?.object === "instagram";
     const channel = isInstagram ? "instagram" : "facebook";
-    const entries = req.body?.entry || [];
+    const entries = body?.entry || [];
     for (const entry of entries) {
       const messagingEvents = entry.messaging || [];
       for (const event of messagingEvents) {
