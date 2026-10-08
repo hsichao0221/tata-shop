@@ -45,14 +45,16 @@ export default async function handler(req, res) {
   if (date > today) date = today; // 未來日期沒有匯率可查，當成今天
 
   const started = Date.now();
+  const detail = []; // 每一天失敗的原因，查不到時一起回傳，方便判斷是被台銀擋、逾時還是格式變了
   for (let i = 0; i <= 7; i++) {
     if (Date.now() - started > 8000) break; // 函式有執行時間上限，不要把整個請求拖到被砍掉
     const d = addDays(date, -i);
     try {
       const r = await fetchWithTimeout(BOT_CSV + d, 4000);
-      if (!r.ok) continue;
-      const rate = parseBotCsvRate(await r.text(), "CNY");
-      if (!rate) continue;
+      if (!r.ok) { detail.push(`${d}: HTTP ${r.status}`); continue; }
+      const text = await r.text();
+      const rate = parseBotCsvRate(text, "CNY");
+      if (!rate) { detail.push(`${d}: 解析失敗(長度${text.length}，開頭:${text.slice(0, 40).replace(/\s+/g, " ")})`); continue; }
       res.setHeader("Cache-Control", d < today ? "public, s-maxage=86400, stale-while-revalidate=604800" : "public, s-maxage=300");
       res.status(200).json({
         ok: true, currency: "CNY", requestedDate: date, rateDate: d,
@@ -61,7 +63,8 @@ export default async function handler(req, res) {
       return;
     } catch (e) {
       // 單一天逾時或連線失敗：換前一天再試，不整個放棄
+      detail.push(`${d}: ${e?.name || "錯誤"} ${String(e?.message || "").slice(0, 80)}`);
     }
   }
-  res.status(404).json({ ok: false, error: `查不到 ${date} 前後的人民幣牌告匯率` });
+  res.status(404).json({ ok: false, error: `查不到 ${date} 前後的人民幣牌告匯率`, detail });
 }
