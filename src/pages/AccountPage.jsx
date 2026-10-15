@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../AuthContext.jsx";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "../supabase.js";
+import { computeCreditStatus } from "../creditLedger.js";
 
 const inputStyle = { padding: "10px 12px", border: "1px solid #ddd", borderRadius: 6, fontSize: 14, width: "100%", boxSizing: "border-box" };
 const labelStyle = { color: "#999", fontSize: 12, marginBottom: 4 };
@@ -435,6 +436,7 @@ function OrderNotifPrefs({ member, updateMemberProfile }) {
 // 商店購物金：顯示目前餘額 + 完整收支明細(來自pos_credit_logs)
 function StoreCreditTab({ member }) {
   const [logs, setLogs] = useState([]);
+  const [depLogs, setDepLogs] = useState(null); // null = 讀不到訂金紀錄(退回舊版顯示，不做拆分)
   const [loading, setLoading] = useState(true);
   const memberId = member?.id;
 
@@ -451,13 +453,40 @@ function StoreCreditTab({ member }) {
         setLoading(false);
       })
       .catch(() => setLoading(false));
+    // 訂金(店內儲值)紀錄：拿來把「有期限的購物金」與「無期限的訂金」分開顯示；讀不到就不拆分
+    fetch(`${SUPABASE_URL}/rest/v1/pos_deposit_logs?member_id=eq.${encodeURIComponent(memberId)}&order=date.asc&limit=1000`, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + SUPABASE_ANON_KEY },
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setDepLogs(Array.isArray(d) ? d : null))
+      .catch(() => setDepLogs(null));
   }, [memberId]);
+
+  // 拆分只在「兩份紀錄都完整讀到」時進行；logs 最多讀100筆，滿了表示可能不完整，也不拆分
+  const st = useMemo(() => {
+    if (!memberId || depLogs === null || logs.length >= 100) return null;
+    return computeCreditStatus({ creditLogs: logs, depositLogs: depLogs, balance: member?.deposit_balance || 0, soonDays: 30 });
+  }, [memberId, logs, depLogs, member?.deposit_balance]);
 
   return (
     <div>
       <div style={{ ...sectionCard, marginBottom: 20, textAlign: "center" }}>
-        <div style={{ color: "#999", fontSize: 12 }}>目前購物金餘額</div>
-        <div style={{ fontSize: 30, fontWeight: 700, marginTop: 6 }}>NT${(member?.deposit_balance || 0).toLocaleString()}</div>
+        <div style={{ color: "#999", fontSize: 12 }}>{st ? "目前可使用餘額" : "目前購物金餘額"}</div>
+        <div style={{ fontSize: 30, fontWeight: 700, marginTop: 6 }}>NT${(st ? st.available : member?.deposit_balance || 0).toLocaleString()}</div>
+        {st && (
+          <div style={{ marginTop: 12, textAlign: "left", fontSize: 13, lineHeight: 1.9, borderTop: "1px solid #f0f0f0", paddingTop: 10 }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}><span>購物金</span><b>NT${st.creditValid.toLocaleString()}</b></div>
+            {st.deposit + st.unlogged > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between" }}><span>訂金（無使用期限）</span><b>NT${(st.deposit + st.unlogged).toLocaleString()}</b></div>
+            )}
+            {st.soonLots.length > 0 && (
+              <div style={{ color: "#d35400", marginTop: 4 }}>
+                ⏰ 即將到期：{st.soonLots.map((l) => `NT$${l.amt.toLocaleString()}（${l.exp} 到期）`).join("、")}
+              </div>
+            )}
+            {st.expired > 0 && <div style={{ color: "#999", marginTop: 4 }}>已過期 NT${st.expired.toLocaleString()}，無法使用</div>}
+          </div>
+        )}
       </div>
 
       <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>明細紀錄</h3>
