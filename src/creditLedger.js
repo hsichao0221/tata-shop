@@ -11,7 +11,12 @@
 // 結帳當天仍在有效期內(expire_date >= 當天)才可被扣用。
 export const CREDIT_GRANT_TYPES = ["issue", "birthday", "welcome", "renew", "upgrade", "referral"];
 
-const dayOf = (x) => String(x || "").slice(0, 10);
+// 日期一律轉成 YYYY-MM-DD 再比較：實際資料裡 expire_date 有 2026-06-09、2026/06/09、20260914 等多種寫法，
+// 直接用字串比大小會誤判(例如 "2026/06/09" > "2026-10-15")，導致已過期的購物金被當成有效。
+const dayOf = (x) => {
+  const m = String(x || "").match(/(\d{4})\D?(\d{1,2})\D?(\d{1,2})/);
+  return m ? `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}` : "";
+};
 const addDays = (ymd, n) => {
   const d = new Date(ymd + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + n);
