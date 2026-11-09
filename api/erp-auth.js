@@ -58,6 +58,21 @@ function verifyPayload(token, purpose) {
   } catch (e) { return null; }
 }
 
+// ── 資料庫存取憑證：登入成功後簽發一張Supabase認得的JWT(role=authenticated，並帶erp_role宣告) ──
+// 資料庫的存取政策(RLS)之後會依這個宣告放行，取代過去「拿公開金鑰就能讀寫全部」的作法。
+// 需要在Vercel設定環境變數SUPABASE_JWT_SECRET(Supabase → Project Settings → API → JWT Secret)；
+// 沒設定時不簽發(回傳undefined)，前端會維持原本的作法，不會壞掉。
+function mintDbToken(u) {
+  const secret = process.env.SUPABASE_JWT_SECRET;
+  if (!secret || !u) return undefined;
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+  const now = Math.floor(Date.now() / 1000);
+  const head = b64({ alg: "HS256", typ: "JWT" });
+  const body = b64({ aud: "authenticated", role: "authenticated", iss: "supabase", sub: String(u.id), iat: now, exp: now + Math.floor(SESSION_TTL_MS / 1000), erp_role: u.role || "staff", erp_uid: String(u.id) });
+  const sig = crypto.createHmac("sha256", secret).update(head + "." + body).digest("base64url");
+  return head + "." + body + "." + sig;
+}
+
 // 回傳給瀏覽器的員工資料：絕對不含密碼雜湊、驗證秘鑰、PIN雜湊、邀請碼
 function toSafeUser(u) {
   const { pw_hash, invite_token_hash, totp_secret, pin, ...rest } = u;
@@ -441,12 +456,12 @@ export default async function handler(req, res) {
           res.status(200).json({ success: true, needTotp: true, ticket: signPayload({ p: "totp", uid: u.id, exp: Date.now() + TICKET_TTL_MS }) });
           return;
         }
-        res.status(200).json({ success: true, user: toSafeUser(u), session: signPayload({ p: "session", uid: u.id, exp: Date.now() + SESSION_TTL_MS }) });
+        res.status(200).json({ success: true, user: toSafeUser(u), session: signPayload({ p: "session", uid: u.id, exp: Date.now() + SESSION_TTL_MS }), dbToken: mintDbToken(u) });
         return;
       }
       // 舊版前端(還沒更新的快取頁面)：維持原本的回傳格式，只是額外附上憑證
       const { pw_hash, invite_token_hash, ...safeUser } = u;
-      res.status(200).json({ success: true, user: safeUser, session: signPayload({ p: "session", uid: u.id, exp: Date.now() + SESSION_TTL_MS }) });
+      res.status(200).json({ success: true, user: safeUser, session: signPayload({ p: "session", uid: u.id, exp: Date.now() + SESSION_TTL_MS }), dbToken: mintDbToken(u) });
     } catch (e) {
       console.error("login error:", e);
       res.status(500).json({ error: "登入時發生錯誤，請稍後再試" });
@@ -485,7 +500,7 @@ export default async function handler(req, res) {
         res.status(200).json({ success: false, error: "驗證碼錯誤，請重試" });
         return;
       }
-      res.status(200).json({ success: true, user: toSafeUser(u), session: signPayload({ p: "session", uid: u.id, exp: Date.now() + SESSION_TTL_MS }) });
+      res.status(200).json({ success: true, user: toSafeUser(u), session: signPayload({ p: "session", uid: u.id, exp: Date.now() + SESSION_TTL_MS }), dbToken: mintDbToken(u) });
     } catch (e) { console.error("verify-totp error:", e); res.status(500).json({ error: "驗證時發生錯誤" }); }
     return;
   }
@@ -628,7 +643,7 @@ export default async function handler(req, res) {
       res.status(200).json({
         success: true,
         user: { id: matched.id, name: matched.name, role: matched.role, store_id: matched.store_id },
-        ...(action === "pin-login" ? { session: signPayload({ p: "session", uid: matched.id, exp: Date.now() + SESSION_TTL_MS }) } : {}),
+        ...(action === "pin-login" ? { session: signPayload({ p: "session", uid: matched.id, exp: Date.now() + SESSION_TTL_MS }), dbToken: mintDbToken(matched) } : {}),
       });
     } catch (e) { console.error("pin error:", e); res.status(500).json({ error: "PIN驗證時發生錯誤" }); }
     return;
