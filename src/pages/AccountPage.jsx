@@ -241,6 +241,21 @@ function PersonalInfoTab({ user, member, updateEmail, updateMemberProfile }) {
   });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
+  const [regCfg, setRegCfg] = useState(null);
+  useEffect(() => { fetchRegistrationSettings().then(setRegCfg); }, []);
+  // 商家設為「必填」且目前還沒填的欄位：用橘色框和「必填」標記提醒，填好後自動恢復正常樣式
+  const needFill = (k) => regCfg?.fields?.[k] === "required" && !String(form[k] ?? "").trim();
+  const fieldStyle = (k) => (needFill(k) ? { ...inputStyle, border: "1.5px solid #e08a00", background: "#fff8ec" } : inputStyle);
+  const fieldLabel = (k, text) => (
+    <div style={{ ...labelStyle, color: needFill(k) ? "#b36b00" : labelStyle.color, fontWeight: needFill(k) ? 700 : 400 }}>
+      {text}
+      {regCfg?.fields?.[k] === "required" && (
+        <span style={{ marginLeft: 6, fontSize: 11, color: needFill(k) ? "#fff" : "#999", background: needFill(k) ? "#e08a00" : "transparent", borderRadius: 4, padding: needFill(k) ? "1px 6px" : 0 }}>
+          {needFill(k) ? "請填寫（必填）" : "必填"}
+        </span>
+      )}
+    </div>
+  );
 
   const [newEmail, setNewEmail] = useState("");
   const [emailSaving, setEmailSaving] = useState(false);
@@ -251,8 +266,13 @@ function PersonalInfoTab({ user, member, updateEmail, updateMemberProfile }) {
 
   async function handleSave(e) {
     e.preventDefault();
-    setSaving(true);
     setMsg(null);
+    const missingKeys = ["name", "phone", "birthday", "gender"].filter(needFill);
+    if (missingKeys.length > 0) {
+      setMsg({ type: "error", text: "請填寫必填欄位：" + missingKeys.map((k) => REG_FIELD_LABELS[k]).join("、") });
+      return;
+    }
+    setSaving(true);
     const { error } = await updateMemberProfile({
       name: form.name.trim(),
       phone: form.phone.trim(),
@@ -291,8 +311,8 @@ function PersonalInfoTab({ user, member, updateEmail, updateMemberProfile }) {
         <h3 style={{ fontSize: 14, fontWeight: 700, marginTop: 0, marginBottom: 16 }}>會員資料</h3>
         <form onSubmit={handleSave} style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 420 }}>
           <div>
-            <div style={labelStyle}>姓名</div>
-            <input style={inputStyle} value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} />
+            {fieldLabel("name", "姓名")}
+            <input style={fieldStyle("name")} value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} />
           </div>
           <div>
             <div style={labelStyle}>電郵</div>
@@ -302,12 +322,12 @@ function PersonalInfoTab({ user, member, updateEmail, updateMemberProfile }) {
             </div>
           </div>
           <div>
-            <div style={labelStyle}>手機號碼</div>
-            <input style={inputStyle} value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} />
+            {fieldLabel("phone", "手機號碼")}
+            <input style={fieldStyle("phone")} value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} />
           </div>
           <div>
-            <div style={labelStyle}>性別</div>
-            <select style={inputStyle} value={form.gender} onChange={(e) => setForm((p) => ({ ...p, gender: e.target.value }))}>
+            {fieldLabel("gender", "性別")}
+            <select style={fieldStyle("gender")} value={form.gender} onChange={(e) => setForm((p) => ({ ...p, gender: e.target.value }))}>
               <option value="">不透露</option>
               <option value="female">女</option>
               <option value="male">男</option>
@@ -315,8 +335,8 @@ function PersonalInfoTab({ user, member, updateEmail, updateMemberProfile }) {
             </select>
           </div>
           <div>
-            <div style={labelStyle}>生日日期</div>
-            <input type="date" style={inputStyle} value={form.birthday} onChange={(e) => setForm((p) => ({ ...p, birthday: e.target.value }))} />
+            {fieldLabel("birthday", "生日日期")}
+            <input type="date" style={fieldStyle("birthday")} value={form.birthday} onChange={(e) => setForm((p) => ({ ...p, birthday: e.target.value }))} />
           </div>
           <div>
             <div style={labelStyle}>密碼</div>
