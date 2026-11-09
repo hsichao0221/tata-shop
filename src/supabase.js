@@ -321,6 +321,24 @@ export async function resolveBlockProducts(blocks, categories) {
   return productsMap;
 }
 
+// 查詢Email的註冊狀態：verified(已註冊且已驗證) / unverified(已註冊但未驗證) /
+// member_only(只有會員資料，還沒有登入帳號) / none(都沒有)。只回傳狀態，不暴露任何資料。
+// 資料庫函式還沒建立或查詢失敗時，退回舊的「查會員資料表」作法。
+export async function checkEmailStatus(email) {
+  try {
+    const rr = await fetch(`${SUPABASE_URL}/rest/v1/rpc/email_status`, {
+      method: "POST", headers: HEADERS, body: JSON.stringify({ p_email: email }),
+    });
+    if (rr.ok) {
+      const v = await rr.json();
+      if (typeof v === "string") return v;
+    }
+  } catch (e) {
+    console.warn("checkEmailStatus failed:", e);
+  }
+  return (await checkEmailExists(email)) ? "member_only" : "none";
+}
+
 export async function checkEmailExists(email) {
   try {
     // 優先用資料庫函式(只回傳true/false，不暴露會員資料)；函式還沒建立時退回舊作法

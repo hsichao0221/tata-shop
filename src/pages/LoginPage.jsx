@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../AuthContext.jsx";
-import { fetchAuthSettings, checkEmailExists } from "../supabase.js";
+import { fetchAuthSettings, checkEmailStatus } from "../supabase.js";
 
 export default function LoginPage() {
   const { user, signUpWithEmail, signInWithEmail, signInWithProvider, resendConfirmationEmail } = useAuth();
@@ -63,13 +63,22 @@ export default function LoginPage() {
         setError("兩次輸入的密碼不一致，請重新確認");
         return;
       }
-      // 因為 Supabase 在 Confirm Email 開啟時，對重複的Email不會給出明確錯誤（安全設計），
-      // 改用查詢 pos_members 的方式輔助判斷，提早告知顧客這個Email已經用過，不用等到送出才發現
-      const exists = await checkEmailExists(email);
-      if (exists) {
-        setError("此 Email 已經註冊過，請改用登入，或使用其他 Email 註冊");
+      // Supabase 在 Confirm Email 開啟時，對重複的Email不會給出明確錯誤（安全設計），
+      // 所以送出前先查這個Email的註冊狀態，依狀態給顧客明確的指引
+      const status = await checkEmailStatus(email);
+      if (status === "verified") {
+        setError("此 Email 已經註冊過，請直接登入；如果忘記密碼，可以使用「忘記密碼」重設");
         return;
       }
+      if (status === "unverified") {
+        setSignupNotice("此 Email 已經註冊過，但還沒完成驗證。請到信箱點擊驗證連結，沒收到的話可以重新寄送驗證信。");
+        setPendingEmail(email);
+        setResendMsg(null);
+        setMode("login");
+        return;
+      }
+      // member_only(只有ERP/Shopline留下的會員資料、還沒有登入帳號)：不擋，讓他註冊，
+      // 註冊驗證後登入時會用Email自動對應到原本的會員資料，保留消費紀錄與購物金
     }
 
     setSubmitting(true);
