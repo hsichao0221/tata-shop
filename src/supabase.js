@@ -67,6 +67,17 @@ export async function fetchSalesCountBySku() {
 // 讀取完整商品清單（商品資料分批存在 products_0, products_1... 這幾個 key，
 // 這裡負責把它們依序讀出來拼成一個完整陣列）
 export async function fetchAllProducts() {
+  // 優先讀「公開版」商品資料(shop_products_*，已拿掉成本等內部欄位)；
+  // ERP還沒產生公開版時，退回舊的完整版(products_*)，確保商品頁不會變空。
+  const pubCount = Number(await loadSetting("shop_products_batches")) || 0;
+  if (pubCount >= 1) {
+    const batches = await Promise.all(
+      Array.from({ length: pubCount }, (_, i) => loadSetting(`shop_products_${i}`))
+    );
+    const list = batches.flat().filter((p) => p && typeof p === "object");
+    if (list.length > 0) return list;
+  }
+
   const batchCount = Number(await loadSetting("products_batches")) || 0;
 
   if (batchCount >= 1) {
@@ -97,7 +108,8 @@ export function filterActiveProducts(products) {
 // 不像 fetchAllProducts 要把全部批次抓完，大幅減少首頁的網路請求次數跟等待時間。
 // 商品列表頁（看全部商品）才需要用 fetchAllProducts 抓完整資料。
 export async function fetchFeaturedProducts(limit = 12) {
-  const firstBatch = await loadSetting("products_0");
+  const pubFirst = await loadSetting("shop_products_0");
+  const firstBatch = Array.isArray(pubFirst) && pubFirst.length > 0 ? pubFirst : await loadSetting("products_0");
   const list = Array.isArray(firstBatch) ? firstBatch : [];
   const active = filterActiveProducts(list);
   return active.slice(0, limit);
