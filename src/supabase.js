@@ -32,6 +32,18 @@ async function loadSetting(key) {
 export async function fetchSalesCountBySku() {
   try {
     const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+    // 優先用資料庫函式(直接回傳每個貨號的銷量，不下載訂單內容)；函式還沒建立時退回舊作法
+    try {
+      const rr = await fetch(`${SUPABASE_URL}/rest/v1/rpc/sales_counts_90d`, { method: "POST", headers: HEADERS, body: "{}" });
+      if (rr.ok) {
+        const rows = await rr.json();
+        if (Array.isArray(rows)) {
+          const out = {};
+          rows.forEach((x) => { if (x.sku) out[x.sku] = Number(x.qty) || 0; });
+          return out;
+        }
+      }
+    } catch (e) { /* 退回舊作法 */ }
     const r = await fetch(
       `${SUPABASE_URL}/rest/v1/pos_orders?type=eq.sale&date=gte.${ninetyDaysAgo}&select=items&limit=5000`,
       { headers: HEADERS }
@@ -299,6 +311,14 @@ export async function resolveBlockProducts(blocks, categories) {
 
 export async function checkEmailExists(email) {
   try {
+    // 優先用資料庫函式(只回傳true/false，不暴露會員資料)；函式還沒建立時退回舊作法
+    const rr = await fetch(`${SUPABASE_URL}/rest/v1/rpc/email_exists`, {
+      method: "POST", headers: HEADERS, body: JSON.stringify({ p_email: email }),
+    });
+    if (rr.ok) {
+      const v = await rr.json();
+      if (typeof v === "boolean") return v;
+    }
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/pos_members?email=eq.${encodeURIComponent(email)}&select=id&limit=1`,
       { headers: HEADERS }
