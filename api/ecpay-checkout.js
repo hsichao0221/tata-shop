@@ -10,7 +10,8 @@ const ECPAY_URL_PROD = "https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5";
 
 // 共用 fashion-erp 同一個 Supabase 專案
 const SUPABASE_URL = "https://vsqdzntwavegnwctzzgx.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZzcWR6bnR3YXZlZ253Y3R6emd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMjEyOTMsImV4cCI6MjA5Mzc5NzI5M30.vkZTXD-XnDH07AYrYTA0k8quTWInwLN_s4oMr70u7nY";
+// 伺服器端一律優先使用service role金鑰(不受資料庫公開存取限制影響)；沒設定時才退回公開金鑰，維持相容。
+const SUPABASE_ANON_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZzcWR6bnR3YXZlZ253Y3R6emd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMjEyOTMsImV4cCI6MjA5Mzc5NzI5M30.vkZTXD-XnDH07AYrYTA0k8quTWInwLN_s4oMr70u7nY";
 
 // 讀取後台「金流設定」頁存的租戶自訂設定；讀不到、格式不對、或MerchantID沒填，
 // 就回傳null，呼叫端會fallback用上面的官方測試金鑰，確保沒設定時行為完全不變。
