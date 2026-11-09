@@ -9,7 +9,11 @@ import crypto from "crypto";
 // ECPay 的 URL encode 規則跟標準 JS 的 encodeURIComponent 有幾個字元不同，
 // 必須依照官方規定額外處理，否則檢查碼會算錯（這是串接 ECPay 最常見的出錯點）
 function ecpayUrlEncode(str) {
+  // 綠界規格(對應.NET/PHP的urlencode)：單引號與波浪號一定要編碼成%27、%7E；
+  // JS的encodeURIComponent不會編碼這兩個字元，商品名稱含 ' 或 ~ 時簽章就會跟綠界算的不一致
   return encodeURIComponent(str)
+    .replace(/'/g, "%27")
+    .replace(/~/g, "%7E")
     .replace(/%2D/g, "-")
     .replace(/%5F/g, "_")
     .replace(/%2E/g, ".")
