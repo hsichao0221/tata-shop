@@ -148,10 +148,16 @@ export default function CheckoutPage() {
     }
 
     // 去後端暫存資料表撈剛剛選好的門市資訊
-    fetch(
-      `${SUPABASE_URL}/rest/v1/shop_cvs_selections?draft_id=eq.${encodeURIComponent(cvsDraft)}&select=*`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + SUPABASE_ANON_KEY } }
-    )
+    // 優先用資料庫函式只取「這一組草稿編號」那一筆；函式還沒建立時退回直接查表(資料表開放時才有結果)
+    fetch(`${SUPABASE_URL}/rest/v1/rpc/get_cvs_selection`, {
+      method: "POST",
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + SUPABASE_ANON_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ p_draft_id: cvsDraft }),
+    })
+      .then((r) => (r.ok ? r : fetch(
+        `${SUPABASE_URL}/rest/v1/shop_cvs_selections?draft_id=eq.${encodeURIComponent(cvsDraft)}&select=*`,
+        { headers: { apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + SUPABASE_ANON_KEY } }
+      )))
       .then((r) => (r.ok ? r.json() : []))
       .then((rows) => {
         const row = rows?.[0];
@@ -199,7 +205,8 @@ export default function CheckoutPage() {
   function handleChooseStore(method) {
     // 綠界ExtraData欄位上限20字元，用短編號（時間戳記末6碼+4碼亂數，共10字元）避免超長被截斷或清空，
     // MerchantTradeNo也帶同一個編號當備援，兩個欄位都會被綠界原值回傳，提高比對成功率
-    const draftId = Date.now().toString(36).slice(-6) + Math.random().toString(36).slice(2, 6);
+    // 草稿編號同時是門市暫存資料的「鑰匙」，用加密等級亂數產生18碼(綠界MerchantTradeNo上限20碼)，無法被猜到
+    const draftId = Array.from(crypto.getRandomValues(new Uint8Array(18)), (b) => "0123456789abcdefghijklmnopqrstuvwxyz"[b % 36]).join("");
     localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...customerInfo, shipMethodId: method.id }));
 
     const form = document.createElement("form");
