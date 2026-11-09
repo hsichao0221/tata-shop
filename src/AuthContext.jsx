@@ -184,7 +184,12 @@ export function AuthProvider({ children }) {
         return { error: { message: data?.message || "更新失敗" } };
       }
       const updated = await res.json();
-      if (Array.isArray(updated) && updated[0]) setMember(updated[0]);
+      // 資料庫規則擋下時不會報錯，只會「沒有任何一筆被更新」(回傳空陣列)，
+      // 這種情況一定要當成失敗，不能讓畫面誤以為儲存成功
+      if (!Array.isArray(updated) || !updated[0]) {
+        return { error: { message: "儲存沒有成功，找不到可更新的會員資料，請登出後重新登入再試一次" } };
+      }
+      setMember(updated[0]);
       return { error: null };
     } catch (e) {
       return { error: { message: String(e) } };
