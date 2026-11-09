@@ -31,6 +31,90 @@ function generateToken() {
 
 const INVITE_EXPIRE_HOURS = 72;
 
+// ── 登入憑證(session)：登入成功後由伺服器簽發，之後呼叫帳號管理這類敏感動作時一併帶上 ──
+// 用HMAC-SHA256簽章，金鑰從SUPABASE_SERVICE_ROLE_KEY衍生(不需要新增環境變數)，12小時有效。
+// 憑證裡只放員工id/角色/到期時間，伺服器每次都會用資料庫裡的最新狀態再確認(帳號是否仍啟用、
+// 是否仍是管理員)，所以被停用或降權的帳號，舊憑證馬上就失效。
+const SESSION_TTL_MS = 12 * 3600 * 1000;
+const TICKET_TTL_MS = 5 * 60 * 1000;
+function signingKey() {
+  return crypto.createHash("sha256").update("erp-session|" + (process.env.SUPABASE_SERVICE_ROLE_KEY || "")).digest();
+}
+function signPayload(obj) {
+  const body = Buffer.from(JSON.stringify(obj)).toString("base64url");
+  const sig = crypto.createHmac("sha256", signingKey()).update(body).digest("base64url");
+  return body + "." + sig;
+}
+function verifyPayload(token, purpose) {
+  if (typeof token !== "string" || token.indexOf(".") < 0) return null;
+  const [body, sig] = token.split(".");
+  const expect = crypto.createHmac("sha256", signingKey()).update(body).digest("base64url");
+  const a = Buffer.from(sig || ""), b = Buffer.from(expect);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  try {
+    const obj = JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
+    if (obj.p !== purpose || !obj.exp || Date.now() > obj.exp) return null;
+    return obj;
+  } catch (e) { return null; }
+}
+
+// 回傳給瀏覽器的員工資料：絕對不含密碼雜湊、驗證秘鑰、PIN雜湊、邀請碼
+function toSafeUser(u) {
+  const { pw_hash, invite_token_hash, totp_secret, pin, ...rest } = u;
+  return { ...rest, totp_enabled: !!(u.totp_enabled && totp_secret), has_pin: !!pin };
+}
+
+// 簡單的失敗次數限制(記憶體內、每個伺服器實例各自計算，擋掉一般的連續猜測；不是萬無一失)
+const _fails = new Map();
+function throttled(key, max = 8, windowMs = 10 * 60 * 1000) {
+  const now = Date.now();
+  const e = _fails.get(key);
+  if (!e || now > e.reset) return false;
+  return e.n >= max;
+}
+function noteFail(key, windowMs = 10 * 60 * 1000) {
+  const now = Date.now();
+  const e = _fails.get(key);
+  if (!e || now > e.reset) _fails.set(key, { n: 1, reset: now + windowMs });
+  else e.n++;
+}
+
+// PIN雜湊：沿用ERP/POS原本的格式(SHA-256 + 鹽)，讓已存的PIN不用重設就能比對
+function hashPinLegacy(pin, userId) {
+  return crypto.createHash("sha256").update("tata-pos-salt-" + userId + "-" + pin).digest("hex");
+}
+function pinMatches(stored, pin, userId) {
+  if (!stored) return { ok: false };
+  if (/^[0-9a-f]{64}$/.test(stored)) return { ok: hashPinLegacy(pin, userId) === stored };
+  return { ok: stored === pin, upgrade: stored === pin }; // 舊明文格式，比對成功順便升級
+}
+
+// 伺服器端驗證TOTP(RFC 6238：SHA-1、6位數、30秒，前後各容許一個時間步)
+function verifyTotpServer(secret, token) {
+  try {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    let bits = "";
+    for (const c of String(secret).toUpperCase()) {
+      const i = chars.indexOf(c);
+      if (i >= 0) bits += i.toString(2).padStart(5, "0");
+    }
+    const bytes = [];
+    for (let i = 0; i + 8 <= bits.length; i += 8) bytes.push(parseInt(bits.slice(i, i + 8), 2));
+    const key = Buffer.from(bytes);
+    const step = Math.floor(Date.now() / 1000 / 30);
+    for (const t of [step, step - 1, step + 1]) {
+      const msg = Buffer.alloc(8);
+      msg.writeUInt32BE(Math.floor(t / 4294967296), 0);
+      msg.writeUInt32BE(t >>> 0, 4);
+      const h = crypto.createHmac("sha1", key).update(msg).digest();
+      const off = h[19] & 0xf;
+      const otp = (((h[off] & 0x7f) << 24) | (h[off + 1] << 16) | (h[off + 2] << 8) | h[off + 3]) % 1000000;
+      if (String(otp).padStart(6, "0") === String(token)) return true;
+    }
+    return false;
+  } catch (e) { return false; }
+}
+
 export default async function handler(req, res) {
   setCors(res);
   if (req.method === "OPTIONS") {
@@ -350,13 +434,202 @@ export default async function handler(req, res) {
         return;
       }
 
-      // 絕對不能把pw_hash欄位回傳給前端
+      if (req.body && req.body.v === 2) {
+        // 新版登入：有開兩步驟驗證的帳號，這裡不回傳員工資料與憑證，只給一張5分鐘的驗證券，
+        // 要再用驗證碼呼叫verify-totp才會拿到憑證。驗證秘鑰從此不會傳到瀏覽器。
+        if (u.totp_enabled && u.totp_secret) {
+          res.status(200).json({ success: true, needTotp: true, ticket: signPayload({ p: "totp", uid: u.id, exp: Date.now() + TICKET_TTL_MS }) });
+          return;
+        }
+        res.status(200).json({ success: true, user: toSafeUser(u), session: signPayload({ p: "session", uid: u.id, exp: Date.now() + SESSION_TTL_MS }) });
+        return;
+      }
+      // 舊版前端(還沒更新的快取頁面)：維持原本的回傳格式，只是額外附上憑證
       const { pw_hash, invite_token_hash, ...safeUser } = u;
-      res.status(200).json({ success: true, user: safeUser });
+      res.status(200).json({ success: true, user: safeUser, session: signPayload({ p: "session", uid: u.id, exp: Date.now() + SESSION_TTL_MS }) });
     } catch (e) {
       console.error("login error:", e);
       res.status(500).json({ error: "登入時發生錯誤，請稍後再試" });
     }
+    return;
+  }
+
+  // ═══ 以下是帳號管理相關動作：取代ERP/POS過去直接用公開金鑰讀寫pos_users的作法 ═══
+  async function getUserById(id) {
+    const r = await sbFetch(`/pos_users?id=eq.${encodeURIComponent(id)}&select=*`);
+    const rows = await r.json();
+    return Array.isArray(rows) ? rows[0] : null;
+  }
+  // 驗證憑證，並用資料庫最新狀態確認帳號仍啟用；requireAdmin時還要是系統管理員
+  async function authSession(requireAdmin) {
+    const sess = verifyPayload((req.body || {}).session, "session");
+    if (!sess) { res.status(401).json({ error: "登入已逾時，請重新登入" }); return null; }
+    const me = await getUserById(sess.uid);
+    if (!me || !me.active) { res.status(401).json({ error: "帳號已停用，請重新登入" }); return null; }
+    if (requireAdmin && me.role !== "admin") { res.status(403).json({ error: "只有系統管理員可以執行這個操作" }); return null; }
+    return me;
+  }
+  const clientIp = String((req.headers && (req.headers["x-forwarded-for"] || "")) || "").split(",")[0].trim() || "unknown";
+
+  // 兩步驟驗證：用登入時拿到的驗證券＋手機上的6位數驗證碼，換取登入憑證
+  if (action === "verify-totp") {
+    try {
+      const { ticket, code } = req.body || {};
+      const t = verifyPayload(ticket, "totp");
+      if (!t) { res.status(200).json({ success: false, error: "驗證已逾時，請重新登入" }); return; }
+      if (throttled("totp:" + t.uid)) { res.status(429).json({ success: false, error: "嘗試次數過多，請稍後再試" }); return; }
+      const u = await getUserById(t.uid);
+      if (!u || !u.active || !u.totp_secret) { res.status(200).json({ success: false, error: "驗證失敗，請重新登入" }); return; }
+      if (!verifyTotpServer(u.totp_secret, String(code || ""))) {
+        noteFail("totp:" + t.uid);
+        res.status(200).json({ success: false, error: "驗證碼錯誤，請重試" });
+        return;
+      }
+      res.status(200).json({ success: true, user: toSafeUser(u), session: signPayload({ p: "session", uid: u.id, exp: Date.now() + SESSION_TTL_MS }) });
+    } catch (e) { console.error("verify-totp error:", e); res.status(500).json({ error: "驗證時發生錯誤" }); }
+    return;
+  }
+
+  // 員工清單(管理員)：不含密碼雜湊、驗證秘鑰、PIN雜湊
+  if (action === "list-users") {
+    try {
+      const me = await authSession(true); if (!me) return;
+      const r = await sbFetch(`/pos_users?select=*&order=created_at.asc`);
+      const rows = await r.json();
+      res.status(200).json({ success: true, users: (Array.isArray(rows) ? rows : []).map(toSafeUser) });
+    } catch (e) { console.error("list-users error:", e); res.status(500).json({ error: "讀取員工清單失敗" }); }
+    return;
+  }
+
+  // 修改員工：只允許白名單欄位
+  if (action === "update-user") {
+    try {
+      const me = await authSession(true); if (!me) return;
+      const { id, fields } = req.body || {};
+      if (!id || !fields || typeof fields !== "object") { res.status(400).json({ error: "缺少參數" }); return; }
+      const ALLOWED = ["role", "store_id", "active", "mod_permissions", "name"];
+      const body = {};
+      ALLOWED.forEach(k => { if (fields[k] !== undefined) body[k] = fields[k]; });
+      body.updated_at = new Date().toISOString();
+      body.last_action_by = me.name || me.email || "系統";
+      body.last_action_reason = String(fields.reason || "更新帳號").slice(0, 200);
+      const r = await sbFetch(`/pos_users?id=eq.${encodeURIComponent(id)}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify(body) });
+      if (!r.ok) { res.status(500).json({ error: (await r.text()) || "更新失敗" }); return; }
+      res.status(200).json({ success: true });
+    } catch (e) { console.error("update-user error:", e); res.status(500).json({ error: "更新失敗" }); }
+    return;
+  }
+
+  // 新增員工(管理員)
+  if (action === "create-user") {
+    try {
+      const me = await authSession(true); if (!me) return;
+      const nu = (req.body || {}).user || {};
+      if (!nu.name || !nu.role) { res.status(400).json({ error: "缺少姓名或角色" }); return; }
+      const r = await sbFetch(`/pos_users`, {
+        method: "POST", headers: { Prefer: "return=representation" },
+        body: JSON.stringify({ email: nu.email || null, name: nu.name, role: nu.role, store_id: nu.store_id || ["all"], active: true, mod_permissions: nu.mod_permissions || {} }),
+      });
+      const rows = await r.json();
+      if (!r.ok || !Array.isArray(rows) || !rows[0]) { res.status(500).json({ error: "新增失敗" }); return; }
+      res.status(200).json({ success: true, user: toSafeUser(rows[0]) });
+    } catch (e) { console.error("create-user error:", e); res.status(500).json({ error: "新增失敗" }); }
+    return;
+  }
+
+  // 設定/重設員工PIN(管理員)：傳入6位數字，伺服器雜湊後存，瀏覽器不再經手雜湊
+  if (action === "set-pin") {
+    try {
+      const me = await authSession(true); if (!me) return;
+      const { id, pin } = req.body || {};
+      if (!id || !/^\d{6}$/.test(String(pin || ""))) { res.status(400).json({ error: "PIN必須是6位數字" }); return; }
+      const r = await sbFetch(`/pos_users?id=eq.${encodeURIComponent(id)}`, {
+        method: "PATCH", headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({ pin: hashPinLegacy(String(pin), id), updated_at: new Date().toISOString(), last_action_by: me.name || me.email || "系統", last_action_reason: "重設PIN" }),
+      });
+      if (!r.ok) { res.status(500).json({ error: "PIN儲存失敗" }); return; }
+      res.status(200).json({ success: true });
+    } catch (e) { console.error("set-pin error:", e); res.status(500).json({ error: "PIN儲存失敗" }); }
+    return;
+  }
+
+  // 啟用兩步驟驗證(管理員)：伺服器確認手機上的驗證碼正確才會存入秘鑰
+  if (action === "totp-enable") {
+    try {
+      const me = await authSession(true); if (!me) return;
+      const { id, secret, code } = req.body || {};
+      if (!id || !secret || !verifyTotpServer(secret, String(code || ""))) { res.status(200).json({ success: false, error: "驗證碼錯誤，請重試" }); return; }
+      const r = await sbFetch(`/pos_users?id=eq.${encodeURIComponent(id)}`, {
+        method: "PATCH", headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({ totp_secret: secret, totp_enabled: true, updated_at: new Date().toISOString(), last_action_by: me.name || me.email || "系統", last_action_reason: "啟用兩步驟驗證" }),
+      });
+      if (!r.ok) { res.status(500).json({ error: "啟用失敗" }); return; }
+      res.status(200).json({ success: true });
+    } catch (e) { console.error("totp-enable error:", e); res.status(500).json({ error: "啟用失敗" }); }
+    return;
+  }
+
+  // 關閉兩步驟驗證(管理員)
+  if (action === "totp-disable") {
+    try {
+      const me = await authSession(true); if (!me) return;
+      const { id } = req.body || {};
+      if (!id) { res.status(400).json({ error: "缺少參數" }); return; }
+      const r = await sbFetch(`/pos_users?id=eq.${encodeURIComponent(id)}`, {
+        method: "PATCH", headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({ totp_secret: null, totp_enabled: false, updated_at: new Date().toISOString(), last_action_by: me.name || me.email || "系統", last_action_reason: "關閉兩步驟驗證" }),
+      });
+      if (!r.ok) { res.status(500).json({ error: "關閉失敗" }); return; }
+      res.status(200).json({ success: true });
+    } catch (e) { console.error("totp-disable error:", e); res.status(500).json({ error: "關閉失敗" }); }
+    return;
+  }
+
+  // POS選人畫面用：只回傳啟用中、有設PIN的店員姓名與門市，不含PIN
+  if (action === "pos-staff") {
+    try {
+      const r = await sbFetch(`/pos_users?active=eq.true&select=id,name,pin,store_id,role`);
+      const rows = await r.json();
+      const list = (Array.isArray(rows) ? rows : []).filter(u => u.pin).map(u => ({ id: u.id, name: u.name, store_id: u.store_id, role: u.role }));
+      res.status(200).json({ success: true, staff: list });
+    } catch (e) { console.error("pos-staff error:", e); res.status(500).json({ error: "讀取店員清單失敗" }); }
+    return;
+  }
+
+  // POS店員PIN登入：伺服器比對PIN(不再把所有人的PIN雜湊傳到瀏覽器)
+  if (action === "pin-login" || action === "pin-check") {
+    try {
+      const { userId, storeId, pin } = req.body || {};
+      if (!/^\d{6}$/.test(String(pin || ""))) { res.status(200).json({ success: false, error: "PIN格式錯誤" }); return; }
+      const rl = "pin:" + clientIp + ":" + (userId || storeId || "");
+      if (throttled(rl, 10)) { res.status(429).json({ success: false, error: "嘗試次數過多，請稍後再試" }); return; }
+      let candidates = [];
+      if (action === "pin-login") {
+        const u = userId ? await getUserById(userId) : null;
+        if (u && u.active) candidates = [u];
+      } else {
+        const r = await sbFetch(`/pos_users?active=eq.true&select=*`);
+        const rows = await r.json();
+        candidates = (Array.isArray(rows) ? rows : []).filter(u => {
+          const st = Array.isArray(u.store_id) ? u.store_id : [u.store_id];
+          return u.pin && st.some(x => x === storeId || x === "all");
+        });
+      }
+      let matched = null, upgrade = false;
+      for (const u of candidates) {
+        const m = pinMatches(u.pin, String(pin), u.id);
+        if (m.ok) { matched = u; upgrade = !!m.upgrade; break; }
+      }
+      if (!matched) { noteFail(rl); res.status(200).json({ success: false, error: "PIN錯誤" }); return; }
+      if (upgrade) {
+        sbFetch(`/pos_users?id=eq.${encodeURIComponent(matched.id)}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ pin: hashPinLegacy(String(pin), matched.id) }) }).catch(() => {});
+      }
+      res.status(200).json({
+        success: true,
+        user: { id: matched.id, name: matched.name, role: matched.role, store_id: matched.store_id },
+        ...(action === "pin-login" ? { session: signPayload({ p: "session", uid: matched.id, exp: Date.now() + SESSION_TTL_MS }) } : {}),
+      });
+    } catch (e) { console.error("pin error:", e); res.status(500).json({ error: "PIN驗證時發生錯誤" }); }
     return;
   }
 
