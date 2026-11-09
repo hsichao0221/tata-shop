@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../AuthContext.jsx";
-import { fetchAuthSettings, checkEmailStatus } from "../supabase.js";
+import { fetchAuthSettings, checkEmailStatus, fetchRegistrationSettings, REG_FIELD_LABELS } from "../supabase.js";
 
 export default function LoginPage() {
   const { user, signUpWithEmail, signInWithEmail, signInWithProvider, resendConfirmationEmail } = useAuth();
@@ -18,6 +18,9 @@ export default function LoginPage() {
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [signupNotice, setSignupNotice] = useState(null); // 註冊成功後的畫面內提示，取代alert
+  const [regCfg, setRegCfg] = useState(null);
+  const [profile, setProfile] = useState({ name: "", phone: "", birthday: "", gender: "" });
+  useEffect(() => { fetchRegistrationSettings().then(setRegCfg); }, []);
   const [pendingEmail, setPendingEmail] = useState(""); // 記住剛註冊、還在等驗證的email，供「重新發送驗證信」使用
   const [resending, setResending] = useState(false);
   const [resendMsg, setResendMsg] = useState(null);
@@ -63,6 +66,17 @@ export default function LoginPage() {
         setError("兩次輸入的密碼不一致，請重新確認");
         return;
       }
+      if (regCfg) {
+        const missing = Object.keys(REG_FIELD_LABELS).filter((k) => regCfg.fields[k] === "required" && !String(profile[k] || "").trim());
+        if (missing.length > 0) {
+          setError("請填寫：" + missing.map((k) => REG_FIELD_LABELS[k]).join("、"));
+          return;
+        }
+        if (regCfg.fields.phone !== "off" && profile.phone.trim() && !/^[0-9+\-\s]{8,15}$/.test(profile.phone.trim())) {
+          setError("手機號碼格式不正確");
+          return;
+        }
+      }
       // Supabase 在 Confirm Email 開啟時，對重複的Email不會給出明確錯誤（安全設計），
       // 所以送出前先查這個Email的註冊狀態，依狀態給顧客明確的指引
       const status = await checkEmailStatus(email);
@@ -91,7 +105,11 @@ export default function LoginPage() {
       }
       // 登入成功的話，user state 會自動更新，上面的 useEffect 會處理導頁
     } else {
-      const { data, error } = await signUpWithEmail(email, password, returnTo);
+      const { data, error } = await signUpWithEmail(email, password, returnTo, (() => {
+        const o = {};
+        if (regCfg) Object.keys(REG_FIELD_LABELS).forEach((k) => { if (regCfg.fields[k] !== "off" && String(profile[k] || "").trim()) o[k] = String(profile[k]).trim(); });
+        return o;
+      })());
       if (error) {
         setError(error.message);
         setSubmitting(false);
@@ -257,7 +275,7 @@ export default function LoginPage() {
           />
           {mode === "signup" && (
             <div style={{ color: "#999", fontSize: 11, marginTop: -6 }}>
-              至少6個字元，需包含英文字母，不能是純數字
+              至少8個字元，需包含英文字母，不能是純數字
             </div>
           )}
           {mode === "signup" && (
@@ -271,6 +289,30 @@ export default function LoginPage() {
               style={{ padding: "10px 12px", border: "1px solid #ddd", borderRadius: 6, fontSize: 14 }}
             />
           )}
+
+          {mode === "signup" && regCfg && ["name", "phone", "birthday", "gender"].filter((k) => regCfg.fields[k] !== "off").map((k) => {
+            const req = regCfg.fields[k] === "required";
+            const common = { value: profile[k], onChange: (e) => setProfile((p) => ({ ...p, [k]: e.target.value })), style: { padding: "10px 12px", border: "1px solid #ddd", borderRadius: 6, fontSize: 14, background: "#fff" } };
+            if (k === "gender") {
+              return (
+                <select key={k} {...common}>
+                  <option value="">{REG_FIELD_LABELS[k]}{req ? "（必填）" : "（選填）"}</option>
+                  <option value="female">女</option>
+                  <option value="male">男</option>
+                  <option value="other">其他</option>
+                </select>
+              );
+            }
+            if (k === "birthday") {
+              return (
+                <div key={k}>
+                  <div style={{ color: "#999", fontSize: 11, marginBottom: 4 }}>{REG_FIELD_LABELS[k]}{req ? "（必填）" : "（選填）"}</div>
+                  <input type="date" {...common} style={{ ...common.style, width: "100%", boxSizing: "border-box" }} />
+                </div>
+              );
+            }
+            return <input key={k} type={k === "phone" ? "tel" : "text"} placeholder={REG_FIELD_LABELS[k] + (req ? "（必填）" : "（選填）")} {...common} />;
+          })}
 
           {error && <div style={{ color: "#c0392b", fontSize: 12 }}>{error}</div>}
 

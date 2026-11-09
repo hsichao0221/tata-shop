@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "../CartContext.jsx";
 import { useAuth } from "../AuthContext.jsx";
-import { fetchShippingMethods, SUPABASE_URL, SUPABASE_ANON_KEY } from "../supabase.js";
+import { fetchShippingMethods, SUPABASE_URL, SUPABASE_ANON_KEY, fetchRegistrationSettings, missingRequiredFields, REG_FIELD_LABELS } from "../supabase.js";
 import { resolveValidSelection, canAddCoupon, calcDiscount, findUsableCoupons } from "../couponUtils.js";
 import { combinePromotionDiscounts, getAppliedPromotions } from "../promotionUtils.js";
 
@@ -34,6 +34,8 @@ export default function CheckoutPage() {
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const [regCfg, setRegCfg] = useState(null);
+  useEffect(() => { fetchRegistrationSettings().then(setRegCfg); }, []);
 
   // 配送方式清單：從ERP後台「送貨設定」動態讀取，不再寫死選項
   const [shipMethods, setShipMethods] = useState([]);
@@ -241,6 +243,13 @@ export default function CheckoutPage() {
 
   async function handleCheckout() {
     if (items.length === 0) return;
+    if (regCfg?.blockCheckout && member) {
+      const missing = missingRequiredFields(member, regCfg);
+      if (missing.length > 0) {
+        setError("會員資料尚未填寫完整（缺少：" + missing.map((k) => REG_FIELD_LABELS[k]).join("、") + "），請先到「我的帳戶 → 個人資訊」補填後再結帳");
+        return;
+      }
+    }
     const validationError = validateCustomerInfo();
     if (validationError) {
       setError(validationError);

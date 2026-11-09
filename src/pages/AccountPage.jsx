@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../AuthContext.jsx";
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from "../supabase.js";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, fetchRegistrationSettings, missingRequiredFields, REG_FIELD_LABELS } from "../supabase.js";
 import { computeCreditStatus } from "../creditLedger.js";
 
 const inputStyle = { padding: "10px 12px", border: "1px solid #ddd", borderRadius: 6, fontSize: 14, width: "100%", boxSizing: "border-box" };
@@ -14,6 +14,8 @@ export default function AccountPage() {
   const { user, member, loading: authLoading, signOut, updateEmail, updateMemberProfile } = useAuth();
   const navigate = useNavigate();
   const [tab, setTab] = useState("profile");
+  const [regCfg, setRegCfg] = useState(null);
+  useEffect(() => { fetchRegistrationSettings().then(setRegCfg); }, []);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [levelSettings, setLevelSettings] = useState(null);
@@ -124,6 +126,20 @@ export default function AccountPage() {
         </div>
         <button onClick={signOut} style={btnSecondary}>登出</button>
       </div>
+
+      {(() => {
+        const missing = member ? missingRequiredFields(member, regCfg) : [];
+        if (missing.length === 0) return null;
+        return (
+          <div style={{ background: "#fff4e5", color: "#8a5a00", border: "1px solid #f0c36d", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 13 }}>
+            ⚠ 會員資料尚未填寫完整，缺少：{missing.map((k) => REG_FIELD_LABELS[k]).join("、")}。
+            {regCfg?.blockCheckout ? "補齊後才能結帳。" : ""}
+            {tab !== "profile" && (
+              <button onClick={() => setTab("profile")} style={{ marginLeft: 8, background: "none", border: "none", color: "#c0392b", textDecoration: "underline", cursor: "pointer", fontSize: 13, padding: 0 }}>立即補填</button>
+            )}
+          </div>
+        );
+      })()}
 
       {lineLinkResult && (
         <div style={{

@@ -29,6 +29,9 @@ async function linkOrCreateMember(authUser) {
       id: `MEMBER-${authUser.id}`,
       email,
       name: authUser.user_metadata?.name || email.split("@")[0],
+      phone: authUser.user_metadata?.phone || "",
+      birthday: authUser.user_metadata?.birthday || null,
+      gender: authUser.user_metadata?.gender || null,
       source: "tata_shop",
       total_spend: 0,
       order_count: 0,
@@ -81,7 +84,7 @@ export function AuthProvider({ children }) {
     return () => listener?.subscription?.unsubscribe();
   }, []);
 
-  async function signUpWithEmail(email, password, redirectPath) {
+  async function signUpWithEmail(email, password, redirectPath, profile) {
     // 加上emailRedirectTo，讓驗證信裡的連結點擊後直接導到指定頁面(預設「我的帳戶」，
     // 但呼叫端可以傳入redirectPath覆寫，例如「客人在領券中心想領券才去註冊」的情境，
     // 收信驗證完應該導回領券中心繼續完成領取，而不是導去我的帳戶讓客人自己重新找路)，
@@ -89,7 +92,9 @@ export function AuthProvider({ children }) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { emailRedirectTo: `${window.location.origin}${redirectPath || "/account"}` },
+      // profile：註冊表單額外收的資料(姓名/手機/生日/性別)，先存在帳號的 user_metadata，
+      // 驗證後第一次登入建立會員資料時再寫入 pos_members
+      options: { emailRedirectTo: `${window.location.origin}${redirectPath || "/account"}`, data: profile || {} },
     });
     // 如果 Supabase 後台「Confirm email」是開啟的，data.session 會是 null，
     // 代表顧客註冊後還需要去信箱點確認連結才能登入；

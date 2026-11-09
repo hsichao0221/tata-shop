@@ -321,6 +321,24 @@ export async function resolveBlockProducts(blocks, categories) {
   return productsMap;
 }
 
+// 會員註冊資料設定（ERP「會員登入設定」裡勾選）：name/phone/birthday/gender 各為 off(不收集)/optional(選填)/required(必填)；
+// blockCheckout=true 時，必填資料沒補齊的已登入會員不能結帳。讀不到設定時一律當作「全部不收集」，行為與舊版相同。
+export const REG_FIELD_LABELS = { name: "姓名", phone: "手機號碼", birthday: "生日", gender: "性別" };
+export async function fetchRegistrationSettings() {
+  const v = await loadSetting("shop_registration_settings");
+  const f = (v && v.fields) || {};
+  const norm = (x) => (x === "required" || x === "optional" ? x : "off");
+  return {
+    fields: { name: norm(f.name), phone: norm(f.phone), birthday: norm(f.birthday), gender: norm(f.gender) },
+    blockCheckout: !!(v && v.blockCheckout),
+  };
+}
+// 回傳會員目前缺少的「必填」欄位 key 清單
+export function missingRequiredFields(member, cfg) {
+  if (!member || !cfg) return [];
+  return Object.keys(REG_FIELD_LABELS).filter((k) => cfg.fields[k] === "required" && !String(member[k] ?? "").trim());
+}
+
 // 查詢Email的註冊狀態：verified(已註冊且已驗證) / unverified(已註冊但未驗證) /
 // member_only(只有會員資料，還沒有登入帳號) / none(都沒有)。只回傳狀態，不暴露任何資料。
 // 資料庫函式還沒建立或查詢失敗時，退回舊的「查會員資料表」作法。
