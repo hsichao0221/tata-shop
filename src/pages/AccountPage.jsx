@@ -184,7 +184,7 @@ export default function AccountPage() {
         ))}
       </div>
 
-      {tab === "profile" && <PersonalInfoTab user={user} member={member} updateEmail={updateEmail} updateMemberProfile={updateMemberProfile} />}
+      {tab === "profile" && <PersonalInfoTab key={member?.id || "no-member"} user={user} member={member} updateEmail={updateEmail} updateMemberProfile={updateMemberProfile} />}
       {tab === "credit" && <StoreCreditTab member={member} />}
       {tab === "coupons" && <CouponsTab member={member} />}
       {tab === "orders" && (
