@@ -397,10 +397,17 @@ function OrderNotifPrefs({ member, updateMemberProfile }) {
   const [linking, setLinking] = useState(false);
   const [linkError, setLinkError] = useState(null);
   const lineLinked = !!member?.channel_identities?.line;
+  // 預設值：站內通知「沒有明確關閉」就視為開啟（Email維持原本規則）；LINE 需要先連結，連結後同樣預設開啟。
+  // 這個規則要跟 ERP 發送通知時的判斷一致（ERP：inapp !== false；line 已連結且 !== false）。
+  const isOn = (key) => {
+    if (key === "inapp") return prefs.inapp !== false;
+    if (key === "line") return lineLinked && prefs.line !== false;
+    return !!prefs[key];
+  };
 
   async function togglePref(key) {
     const prevPrefs = prefs;
-    const next = { ...prefs, [key]: !prefs[key] };
+    const next = { ...prefs, [key]: !isOn(key) };
     setPrefs(next);
     setSaving(true);
     setFeedback(null);
@@ -440,11 +447,11 @@ function OrderNotifPrefs({ member, updateMemberProfile }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#444", cursor: "pointer" }}>
-        <input type="checkbox" checked={!!prefs.email} disabled={saving} onChange={() => togglePref("email")} />
+        <input type="checkbox" checked={isOn("email")} disabled={saving} onChange={() => togglePref("email")} />
         Email 通知
       </label>
       <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: lineLinked ? "#444" : "#bbb" }}>
-        <input type="checkbox" checked={!!prefs.line} disabled={saving || !lineLinked} onChange={() => togglePref("line")} />
+        <input type="checkbox" checked={isOn("line")} disabled={saving || !lineLinked} onChange={() => togglePref("line")} />
         LINE 通知
         {lineLinked ? (
           <span style={{ fontSize: 11, color: "#2e7d32" }}>已連結</span>
@@ -457,7 +464,7 @@ function OrderNotifPrefs({ member, updateMemberProfile }) {
       </div>
       {linkError && <div style={{ fontSize: 11, color: "#c0392b", marginTop: -6 }}>⚠ {linkError}</div>}
       <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#444", cursor: "pointer" }}>
-        <input type="checkbox" checked={!!prefs.inapp} disabled={saving} onChange={() => togglePref("inapp")} />
+        <input type="checkbox" checked={isOn("inapp")} disabled={saving} onChange={() => togglePref("inapp")} />
         站內通知（登入會員中心時顯示）
       </label>
       {feedback && (

@@ -33,6 +33,7 @@ async function linkOrCreateMember(authUser) {
       birthday: authUser.user_metadata?.birthday || null,
       gender: authUser.user_metadata?.gender || null,
       source: "tata_shop",
+      notification_prefs: { email: true, inapp: true, line: true },
       total_spend: 0,
       order_count: 0,
       created_at: new Date().toISOString(),
