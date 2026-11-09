@@ -40,9 +40,9 @@ export default function LoginPage() {
     setConfirmPassword("");
   }
 
-  // 密碼強度檢查：至少6個字元、必須包含至少一個英文字母、不能是純數字（避免123456這種容易被猜到的密碼）
+  // 密碼強度檢查：至少8個字元、必須包含至少一個英文字母、不能是純數字（避免123456這種容易被猜到的密碼）
   function getPasswordError(pwd) {
-    if (pwd.length < 6) return "密碼至少需要6個字元";
+    if (pwd.length < 8) return "密碼至少需要8個字元";
     if (!/[a-zA-Z]/.test(pwd)) return "密碼必須包含至少一個英文字母";
     if (/^\d+$/.test(pwd)) return "密碼不能是純數字，請混合英文字母";
     return null;
@@ -239,7 +239,7 @@ export default function LoginPage() {
           />
           <input
             type="password"
-            placeholder={mode === "signup" ? "密碼（需含英文字母，不可純數字）" : "密碼"}
+            placeholder={mode === "signup" ? "密碼（至少8碼，需含英文字母，不可純數字）" : "密碼"}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required

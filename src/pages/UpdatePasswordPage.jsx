@@ -11,7 +11,7 @@ export default function UpdatePasswordPage() {
   const [submitting, setSubmitting] = useState(false);
 
   function getPasswordError(pwd) {
-    if (pwd.length < 6) return "密碼至少需要6個字元";
+    if (pwd.length < 8) return "密碼至少需要8個字元";
     if (!/[a-zA-Z]/.test(pwd)) return "密碼必須包含至少一個英文字母";
     if (/^\d+$/.test(pwd)) return "密碼不能是純數字，請混合英文字母";
     return null;
@@ -52,7 +52,7 @@ export default function UpdatePasswordPage() {
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <input
           type="password"
-          placeholder="新密碼（需含英文字母，不可純數字）"
+          placeholder="新密碼（至少8碼，需含英文字母，不可純數字）"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
