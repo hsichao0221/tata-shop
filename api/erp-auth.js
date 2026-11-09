@@ -542,10 +542,11 @@ export default async function handler(req, res) {
     try {
       const me = await authSession(true); if (!me) return;
       const { id, pin } = req.body || {};
-      if (!id || !/^\d{6}$/.test(String(pin || ""))) { res.status(400).json({ error: "PIN必須是6位數字" }); return; }
+      const clearing = pin === "";
+      if (!id || (!clearing && !/^\d{6}$/.test(String(pin || "")))) { res.status(400).json({ error: "PIN必須是6位數字" }); return; }
       const r = await sbFetch(`/pos_users?id=eq.${encodeURIComponent(id)}`, {
         method: "PATCH", headers: { Prefer: "return=minimal" },
-        body: JSON.stringify({ pin: hashPinLegacy(String(pin), id), updated_at: new Date().toISOString(), last_action_by: me.name || me.email || "系統", last_action_reason: "重設PIN" }),
+        body: JSON.stringify({ pin: clearing ? null : hashPinLegacy(String(pin), id), updated_at: new Date().toISOString(), last_action_by: me.name || me.email || "系統", last_action_reason: clearing ? "清除PIN" : "重設PIN" }),
       });
       if (!r.ok) { res.status(500).json({ error: "PIN儲存失敗" }); return; }
       res.status(200).json({ success: true });
